@@ -68,15 +68,38 @@ int runSessionStart(const juce::var& args) {
     }
   }
   double latencyMs = juce::Time::getMillisecondCounterHiRes() - t0;
-  juce::String dir = newSessionDir();
+  // Customizable home for the session: CI passes dir=renders/<date>/session
+  // so session.json + eventLog are uploadable artifacts alongside the take.
+  juce::String dir = jstr(args, "dir");
+  if (dir.isNotEmpty()) {
+    juce::File dd(dir);
+    if (!juce::File::isAbsolutePath(dir))
+      dd = juce::File::getCurrentWorkingDirectory().getChildFile(dir);
+    if (dd.getChildFile("session.json").existsAsFile()) {
+      emitErr(errObj("ARGS", "session start: dir already holds a session: " +
+                                 dd.getFullPathName()));
+      return 1;
+    }
+    dd.createDirectory();
+    dir = dd.getFullPathName();
+  } else {
+    dir = newSessionDir();
+  }
   auto* s = new juce::DynamicObject();
   s->setProperty("version", 1);
   s->setProperty("dir", dir);
   s->setProperty("plugin", pq);
   s->setProperty("bypass", bypass);
   if (!bypass) setBundleProps(s, d);
-  s->setProperty("loop", juce::File(loop).getFullPathName());
-  s->setProperty("out", outP);
+  auto abspath = [](const juce::String& p) {
+    return juce::File::isAbsolutePath(p)
+               ? p
+               : juce::File::getCurrentWorkingDirectory()
+                     .getChildFile(p)
+                     .getFullPathName();
+  };
+  s->setProperty("loop", abspath(loop));
+  s->setProperty("out", abspath(outP));
   s->setProperty("sr", sr);
   s->setProperty("block", block);
   s->setProperty("visible", (bool)args["visible"]);
@@ -96,7 +119,7 @@ int runSessionStart(const juce::var& args) {
   }
   auto* o = new juce::DynamicObject();
   o->setProperty("session", resolveSessionFile(dir).getFullPathName());
-  o->setProperty("outFile", outP);
+  o->setProperty("outFile", s->getProperty("out"));
   o->setProperty("startedAt", s->getProperty("startedAt"));
   o->setProperty("latencyMs", latencyMs);
   o->setProperty("loopFrames", (double)ch[0].size());

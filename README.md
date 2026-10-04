@@ -22,12 +22,34 @@ All commands: `plugprobe <cmd> --json <args.json>` →
 | `act` | `{plugin, via:"os"\|"juce", action\|actions, shotAfter?, visible?, holdMs?}` → detached probe click/drag/type. Node-id press works headless via AX; raw `{x,y}` clicks, drag, type need `visible:true` + the macOS Accessibility grant for the current binary (ad-hoc rebuilds invalidate it) |
 | `render` | `{plugin, in, out, sr?, block?, params?, bypass?, timeline?, shot?, visible?, holdMs?}` → offline render. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click) |
 | `compare` | `{a, b, slices?}` → `{nullDb,lufsDiff,spectralDist,sdrDb,artifactDb,costDelta}` |
-| `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?,at_ms?}` → `{atMs,paramDelta?,meters}`; `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
+| `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?,dir?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?,at_ms?}` → `{atMs,paramDelta?,meters}`; `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
 | `meters` | `{session,window_ms?}` → `{peakDb,rmsDb,lufsM,crestDb,spectrum[16]}` (lufsM is an RMS proxy, same convention as `compare`) |
 
 Screenshots only on request (`shot`/`shotAfter`); blank (Metal/async)
 captures are reported, never written. `visible:true` opens a real
 on-screen window (Dock icon, steals focus — headed mode).
+
+## CI artifacts
+
+Every output path is caller-chosen, so jobs upload exactly what was asked
+for — no globs over temp dirs:
+
+- `render`/`compare`/`snapshot`/`act`: pass absolute `out`/`shot` paths
+  under one dir (e.g. `renders/${{ github.run_id }}/`).
+- `session start`: pass `dir` (e.g. `renders/<date>/session`) to keep
+  `session.json` next to the take; `stop` writes `outFile` + `eventLog`
+  there. Without `dir` the session lives in system temp.
+- `scripts/matrix.py --takes <dir>`: keeps rendered takes next to
+  `matrix.csv` instead of system temp.
+
+```yaml
+- run: |
+    BIN=build/plugprobe_artefacts/Release/plugprobe
+    echo "{\"plugin\":\"Example Denoiser\",\"in\":\"in.wav\",\"out\":\"$GITHUB_WORKSPACE/renders/take.wav\",\"shot\":\"$GITHUB_WORKSPACE/renders/shot.png\"}" > /tmp/ren.json
+    $BIN render --json /tmp/ren.json
+- uses: actions/upload-artifact@v4
+  with: {name: takes, path: renders/}
+```
 
 ## Examples
 

@@ -3,7 +3,7 @@
 """matrix.py: scripted A/B over shared fixtures. render each input through
 each --plugin, compare vs ref (or input for null sanity), write matrix.csv.
 Usage: matrix.py --plugin <id|path> [--ref <id|path|none>] --inputs <dir>
-  --out matrix.csv [--sr 48000 --block 512 --params_json p.json]"""
+  --out matrix.csv [--takes takes/ --sr 48000 --block 512 --params_json p.json]"""
 import argparse
 import csv
 import json
@@ -33,6 +33,9 @@ def main():
     ap.add_argument("--ref", default="none")
     ap.add_argument("--inputs", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--takes", default="",
+                    help="dir for rendered takes (uploadable artifacts); "
+                         "default: system temp (takes not kept)")
     ap.add_argument("--bin", default=os.environ.get("PLUGPROBE_BIN", os.environ.get("PHOST_BIN", "plugprobe")))
     ap.add_argument("--sr", type=float, default=48000)
     ap.add_argument("--block", type=int, default=512)
@@ -42,6 +45,9 @@ def main():
 
     wavs = sorted(f for f in os.listdir(a.inputs) if f.endswith(".wav"))
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
+    takes_dir = a.takes or tempfile.gettempdir()
+    if a.takes:
+        os.makedirs(takes_dir, exist_ok=True)
     with open(a.out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=["file", "plugin", "hash", "nullDb",
                                           "lufsDiff", "spectralDist", "sdrDb",
@@ -49,7 +55,7 @@ def main():
         w.writeheader()
         for name in wavs:
             src = os.path.join(a.inputs, name)
-            take = os.path.join(tempfile.gettempdir(), "plugprobe-" + name)
+            take = os.path.join(takes_dir, "plugprobe-" + name)
             rargs = {"plugin": a.plugin, "in": src, "out": take,
                      "sr": a.sr, "block": a.block, "bypass": a.bypass}
             if a.params_json:
@@ -63,7 +69,7 @@ def main():
                 continue
             base = src
             if a.ref != "none":
-                ref_take = os.path.join(tempfile.gettempdir(), "plugprobe-ref-" + name)
+                ref_take = os.path.join(takes_dir, "plugprobe-ref-" + name)
                 rr = plugprobe("render", {"plugin": a.ref, "in": src, "out": ref_take,
                                       "sr": a.sr, "block": a.block}, a.bin)
                 if rr.get("ok"):
