@@ -177,6 +177,8 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
     cutoff.setSliderStyle(juce::Slider::LinearHorizontal);
     cutoff.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     cutoff.setRange(20, 20000);
+    cutoff.setName("Cutoff");  // stable AX node id (AXSlider:Cutoff) for HID
+    cutoff.setTitle("Cutoff");
     cutoff.setLookAndFeel(&lnf);
     cutoff.setColour(juce::Slider::rotarySliderFillColourId, kAmber);
     cutoff.onValueChange = [this] {

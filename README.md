@@ -78,6 +78,12 @@ echo '{"plugin":"Example Denoiser","in":"in.wav","out":"out.wav",
   "timeline":[{"atMs":0,"click":"AXButton:Learn"}]}' > /tmp/ren.json
 $BIN render --json /tmp/ren.json
 
+# HID: drag a named slider on its live window (needs visible:true + the
+# Accessibility grant for the binary; the post-drag state is re-read proof)
+echo '{"plugin":"Example Denoiser","via":"os","visible":true,"holdMs":500,
+  "action":{"target":"AXSlider:Cutoff","op":"drag","dx":-50,"dy":0}}' > /tmp/drag.json
+$BIN act --json /tmp/drag.json
+
 echo '{"a":"a.wav","b":"out.wav"}' > /tmp/cmp.json
 $BIN compare --json /tmp/cmp.json
 ```
