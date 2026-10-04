@@ -14,6 +14,8 @@ Agent-driven audio plugin host. CLI-only: every command is
 - Binary: `$PLUGPROBE_BIN`, else `build/plugprobe_artefacts/Release/plugprobe`
   (`plugprobe.exe` on Windows). Never guess paths — ask the user or `which`.
 - All file args accept absolute paths; keep them caller-chosen (CI artifacts).
+- Repeat loops go faster with `PLUGPROBE_SCAN_CACHE=/tmp/scan.xml`
+  (memoizes plugin discovery across commands, mtime-validated).
 
 ## Workflow (in order)
 
@@ -27,6 +29,8 @@ Agent-driven audio plugin host. CLI-only: every command is
    Node-id press works headless; raw `{x,y}` clicks, drag, type need
    `"visible":true` + macOS Accessibility grant for the binary.
 4. **Render**: `render --json {plugin,in,out,...}` → `{out,hash,peakDb}`.
+   Presets via `params_json` (explicit `params` win). Every command runs
+   crash-isolated: a dying plugin yields `CRASH`, never a dead pipe.
    `timeline:[{atMs,params?,click?}]` replays learn-freeze on one instance.
    Opt-in captures: `shot:path.png`, `video:out.mp4` (macOS, take muxed in).
 5. **Session** (multi-step, agent-paced): `session start {loop,out,...}` →
@@ -38,7 +42,8 @@ Agent-driven audio plugin host. CLI-only: every command is
 
 - Headless default is byte-identical; UI/visible/shot/video are opt-in only.
 - Fail loud: `ARGS` (bad input), `NOT_FOUND` (no plugin), `NO_OS_DRIVER`
-  (macOS-only op elsewhere), `AX_UNTRUSTED` (grant missing). Never retry a
+  (macOS-only op elsewhere), `CRASH` (plugin killed the host — rerun
+  headless/bypass to isolate), `AX_UNTRUSTED` (grant missing). Never retry a
   fail silently — surface `error.code` + `message`.
 - Captures are diagnostic-only: a dead recorder yields `shotSkipped` /
   `videoSkipped`, the take still succeeds.

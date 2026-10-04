@@ -25,6 +25,13 @@ juce::AudioPluginFormatManager& formats();
 void scanInto(juce::KnownPluginList& list,
               const std::vector<juce::String>& dirs,
               const juce::String& formatFilter, bool explicitPaths);
+juce::String scanCachePath(const juce::var& a);  // args.cache or env
+bool loadScanCache(const juce::String& path,
+              const std::vector<juce::String>& dirs,
+              juce::KnownPluginList& list);
+void saveScanCache(const juce::String& path,
+              const std::vector<juce::String>& dirs,
+              const juce::KnownPluginList& list);
 std::vector<juce::String> defaultPaths();
 std::vector<juce::String> argPaths(const juce::var& a);
 bool findPlugin(const juce::String& q, const std::vector<juce::String>& dirs,

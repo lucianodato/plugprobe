@@ -45,6 +45,34 @@ int runRender(const juce::var& args)
       if (!wantVis) wantVis = true;  // video watches the live window
 #endif
     }
+    // Preset files (presets/*.json) load before plugin lookup so a missing
+    // or malformed preset is ARGS anywhere — never a silent dry render.
+    juce::var presetMap;
+    if (args.hasProperty("params_json")) {
+      juce::File pf(args["params_json"].toString());
+      if (!pf.existsAsFile()) {
+        emitErr(errObj("ARGS", "render: preset file not found: " +
+                                   pf.getFullPathName()));
+        return 1;
+      }
+      juce::var presetFile;
+      if (!juce::JSON::parse(pf.loadFileAsString(), presetFile)) {
+        emitErr(errObj("ARGS", "render: preset file is not JSON: " +
+                                   pf.getFullPathName()));
+        return 1;
+      }
+      // Copy out (never self-assign through a member reference: the old
+      // target's storage dies mid-assignment -> SIGSEGV in var::operator=,
+      // which has no self-assignment guard).
+      presetMap = presetFile.hasProperty("params") ? juce::var(presetFile["params"])
+                                                   : juce::var(presetFile);
+      // NB arrays are objects too in JUCE (isObject && isArray): a preset
+      // must be a pure map, so exclude arrays explicitly.
+      if (!presetMap.isObject() || presetMap.isArray()) {
+        emitErr(errObj("ARGS", "render: preset needs a {param:value} map"));
+        return 1;
+      }
+    }
     if (!bypass) {
       juce::PluginDescription d;
       if (!findPlugin(jstr(args, "plugin"), argPaths(args), d)) {
@@ -95,6 +123,17 @@ int runRender(const juce::var& args)
       }
       // Fail loud on unknown targets: silent passthrough renders are worse
       // than errors (every param-plane entry routes through here).
+      // Preset first, explicit params second (explicit wins on conflict).
+      if (presetMap.isObject()) {
+        if (juce::String u = unknownTargetIn(*inst, presetMap);
+            u.isNotEmpty()) {
+          emitErr(errObj("ARGS", "render: unknown param '" + u +
+                                     "' (have: " + validParamNames(*inst) +
+                                     ")"));
+          return 1;
+        }
+        applyParams(*inst, presetMap);
+      }
       if (args.hasProperty("params")) {
         if (juce::String u = unknownTargetIn(*inst, args["params"]);
             u.isNotEmpty()) {
@@ -103,20 +142,6 @@ int runRender(const juce::var& args)
           return 1;
         }
         applyParams(*inst, args["params"]);
-      }
-      if (args.hasProperty("params_json")) {
-        juce::File pf(args["params_json"].toString());
-        juce::var pm;
-        if (juce::JSON::parse(pf.loadFileAsString(), pm)) {
-          juce::var map = pm.hasProperty("params") ? pm["params"] : pm;
-          if (juce::String u = unknownTargetIn(*inst, map); u.isNotEmpty()) {
-            emitErr(errObj("ARGS", "render: unknown param '" + u +
-                                       "' (have: " + validParamNames(*inst) +
-                                       ")"));
-            return 1;
-          }
-          applyParams(*inst, map);
-        }
       }
       // ui_script: juce-plane steps only (param targets); os-only skipped.
       if (auto* sc = args["ui_script"].getArray()) {

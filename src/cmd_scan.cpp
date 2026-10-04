@@ -11,8 +11,20 @@ namespace pp {
 int runScan(const juce::var& args)
 {
     bool explicitPaths = args.hasProperty("paths");
+    auto dirs = argPaths(args);
+    juce::String cacheP = scanCachePath(args);
+    bool cached = false;
     juce::KnownPluginList list;
-    scanInto(list, argPaths(args), jstr(args, "format"), explicitPaths);
+    // Opt-in cache, validated by dir set + recursive mtime. rescan:true
+    // forces a fresh pass. Stale-clock risk is the known ceiling.
+    if (cacheP.isNotEmpty() && !(bool)args["rescan"] &&
+        jstr(args, "format").isEmpty() && loadScanCache(cacheP, dirs, list))
+      cached = true;
+    if (!cached) {
+      scanInto(list, dirs, jstr(args, "format"), explicitPaths);
+      if (cacheP.isNotEmpty() && jstr(args, "format").isEmpty())
+        saveScanCache(cacheP, dirs, list);
+    }
     juce::Array<juce::var> arr;
     for (auto& t : list.getTypes()) {
       auto* o = new juce::DynamicObject();
@@ -40,6 +52,7 @@ int runScan(const juce::var& args)
     }
     auto* o = new juce::DynamicObject();
     o->setProperty("plugins", juce::var(arr));
+    o->setProperty("cached", cached);
     emitOk(juce::var(o));
     return 0;
 }

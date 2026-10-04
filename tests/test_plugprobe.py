@@ -24,13 +24,16 @@ def make_wav(path, secs=1.0, sr=48000, freq=440.0):
     return path
 
 
-def run(cmd, args):
+def run(cmd, args, env=None):
     with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
         json.dump(args, f)
         p = f.name
     try:
+        e = dict(os.environ)
+        if env:
+            e.update(env)
         r = subprocess.run([BIN, cmd, "--json", p], capture_output=True,
-                           text=True, timeout=120)
+                           text=True, timeout=120, env=e)
         return json.loads(r.stdout.strip().splitlines()[-1]), r.returncode
     finally:
         os.unlink(p)
@@ -131,6 +134,61 @@ class Contract(unittest.TestCase):
         self.assertEqual(r["error"]["code"], "ARGS")
         r, _ = run("manual", {"plugin": "no-such-plugin-xyz-123"})
         self.assertEqual(r["error"]["code"], "NOT_FOUND")
+
+    def test_crash_isolation(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        out, rc = run("nope", {}, env={"PLUGPROBE_INJECT_CRASH": "1"})
+        self.assertFalse(out["ok"])
+        self.assertEqual(out["error"]["code"], "CRASH")
+        self.assertEqual(rc, 1)
+
+    def test_preset_fail_loud(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        o = os.path.join(tmp, "o.wav")
+        base = {"plugin": "none", "in": src, "out": o,
+                "bypass": True, "tail_ms": 0}
+        r, _ = run("render", dict(base, params_json=os.path.join(tmp, "no.json")))
+        self.assertEqual(r["error"]["code"], "ARGS")  # missing file
+        bad = os.path.join(tmp, "bad.json")
+        open(bad, "w").write("{not json")
+        r, _ = run("render", dict(base, params_json=bad))
+        self.assertEqual(r["error"]["code"], "ARGS")  # malformed
+        arr = os.path.join(tmp, "arr.json")
+        open(arr, "w").write("[1,2]")
+        r, _ = run("render", dict(base, params_json=arr))
+        self.assertEqual(r["error"]["code"], "ARGS")  # needs map
+
+    def test_scan_cache(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        d = os.path.join(tmp, "plugs")
+        os.mkdir(d)
+        c = os.path.join(tmp, "scan.xml")
+        r, _ = run("scan", {"paths": [d], "cache": c})
+        self.assertTrue(r["ok"])
+        self.assertFalse(r["data"]["cached"])
+        self.assertTrue(os.path.exists(c))
+        r, _ = run("scan", {"paths": [d], "cache": c})
+        self.assertTrue(r["data"]["cached"])
+        open(os.path.join(d, "new.txt"), "w").write("x")
+        r, _ = run("scan", {"paths": [d], "cache": c})
+        self.assertFalse(r["data"]["cached"])  # mtime invalidated
+        r, _ = run("scan", {"paths": [d], "cache": c, "rescan": True})
+        self.assertFalse(r["data"]["cached"])
+        # findPlugin honors the env cache too (populates on miss)
+        c2 = os.path.join(tmp, "env.xml")
+        src2 = make_wav(os.path.join(tmp, "in2.wav"))
+        r, _ = run("render", {"plugin": "no-such-plugin-xyz-123",
+                              "in": src2,
+                              "out": os.path.join(tmp, "y.wav")},
+                   env={"PLUGPROBE_SCAN_CACHE": c2})
+        self.assertEqual(r["error"]["code"], "NOT_FOUND")
+        self.assertTrue(os.path.exists(c2))
 
     def test_stubs_fail_loudly(self):
         if not BIN:

@@ -128,6 +128,60 @@ std::vector<juce::String> argPaths(const juce::var& a) {
   return out;
 }
 
+// Opt-in scan cache (scan {cache} / PLUGPROBE_SCAN_CACHE): a KnownPluginList
+// XML validated by sorted dir set + newest recursive mtime. A stat walk is
+// orders of magnitude cheaper than loading every plugin binary, and it makes
+// repeated agent loops (scan, then render/inspect per plugin) usable.
+static juce::String scanDirKey(std::vector<juce::String> dirs) {
+  std::sort(dirs.begin(), dirs.end());
+  dirs.erase(std::unique(dirs.begin(), dirs.end()), dirs.end());
+  juce::String k;
+  for (auto& d : dirs) k += d + "\n";
+  return k;
+}
+static double scanMaxMtime(const std::vector<juce::String>& dirs) {
+  double m = 0;
+  for (auto& d : dirs) {
+    juce::File root(d);
+    if (!root.isDirectory()) continue;
+    for (auto& f :
+         root.findChildFiles(juce::File::findFilesAndDirectories, true)) {
+      double t = (double)f.getLastModificationTime().toMilliseconds();
+      if (t > m) m = t;
+    }
+  }
+  return m;
+}
+juce::String scanCachePath(const juce::var& a) {
+  juce::String p = jstr(a, "cache");
+  if (p.isNotEmpty()) return p;
+  return juce::SystemStats::getEnvironmentVariable("PLUGPROBE_SCAN_CACHE", "");
+}
+bool loadScanCache(const juce::String& path,
+                   const std::vector<juce::String>& dirs,
+                   juce::KnownPluginList& list) {
+  juce::XmlDocument doc(juce::File(path).loadFileAsString());
+  auto xml = doc.getDocumentElement();
+  if (xml == nullptr) return false;
+  if (xml->getStringAttribute("plugprobe_dirs") != scanDirKey(dirs))
+    return false;
+  if (scanMaxMtime(dirs) > xml->getDoubleAttribute("plugprobe_maxmtime"))
+    return false;
+  list.recreateFromXml(*xml);
+  return true;
+}
+void saveScanCache(const juce::String& path,
+                   const std::vector<juce::String>& dirs,
+                   const juce::KnownPluginList& list) {
+  if (auto xml = list.createXml()) {
+    xml->setAttribute("plugprobe_dirs", scanDirKey(dirs));
+    xml->setAttribute("plugprobe_maxmtime", scanMaxMtime(dirs));
+    juce::File cf(path);
+    cf.getParentDirectory().createDirectory();
+    cf.replaceWithText(xml->toString());
+  }
+}
+
 // Resolve --plugin <id|path|name> to a PluginDescription via one scan pass.
 bool findPlugin(const juce::String& q, const std::vector<juce::String>& dirs,
                 juce::PluginDescription& desc) {
@@ -149,7 +203,14 @@ bool findPlugin(const juce::String& q, const std::vector<juce::String>& dirs,
                                   : qf.getParentDirectory().getFullPathName());
   }
   juce::KnownPluginList list;
-  scanInto(list, ds, "", true);
+  // Same cache as `scan {cache}` via PLUGPROBE_SCAN_CACHE, so repeated agent
+  // loops skip re-loading every plugin binary on each command.
+  juce::String cacheP =
+      juce::SystemStats::getEnvironmentVariable("PLUGPROBE_SCAN_CACHE", "");
+  if (cacheP.isEmpty() || !loadScanCache(cacheP, ds, list)) {
+    scanInto(list, ds, "", true);
+    if (cacheP.isNotEmpty()) saveScanCache(cacheP, ds, list);
+  }
   juce::String qb = qf.getFileName();
   juce::String qbNoExt = qf.getFileNameWithoutExtension();
   for (auto& t : list.getTypes()) {
