@@ -52,3 +52,6 @@ target_link_libraries(plugprobe PRIVATE
     juce::juce_audio_basics
     juce::juce_dsp
     juce::juce_core)
+
+include(GNUInstallDirs)
+install(TARGETS plugprobe RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

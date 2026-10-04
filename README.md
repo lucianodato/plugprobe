@@ -51,6 +51,20 @@ echo '{"a":"a.wav","b":"out.wav"}' > /tmp/cmp.json
 $BIN compare --json /tmp/cmp.json
 ```
 
+## Install
+
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j4
+cmake --install build --prefix ~/.local   # -> ~/.local/bin/plugprobe
+```
+
+Add `~/.local/bin` to `PATH` if needed. System-wide instead:
+
+```sh
+sudo cmake --install build --prefix /usr/local
+```
+
 ## Tests
 
 ```sh

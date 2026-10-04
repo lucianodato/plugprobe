@@ -1,0 +1,150 @@
+name: Build plugprobe
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build-macos:
+    name: macOS (Universal arm64 + x86_64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Version
+        id: extract_version
+        run: |
+          BASE_VER=$(sed -n -E 's/.*project\(plugprobe VERSION ([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt)
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+            if [ -z "$BASE_VER" ]; then echo "ERROR: failed to parse version from CMakeLists.txt" >&2; exit 1; fi
+            VERSION="${BASE_VER}-${SHORT_SHA}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION} (CMake base ${BASE_VER})"
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -j4
+
+      - name: Verify Universal Binary & System-Only Deps
+        run: |
+          BIN=build/plugprobe_artefacts/Release/plugprobe
+          [ -x "$BIN" ] || { echo "binary missing: $BIN"; exit 1; }
+          INFO=$(lipo -info "$BIN" 2>&1)
+          case "$INFO" in *x86_64*arm64*|*arm64*x86_64*) :;; *) echo "$INFO"; exit 1;; esac
+          LEAKS=$(otool -L "$BIN" 2>/dev/null | tail -n +2 | grep -vE '^[[:space:]]*(/usr/lib|/System)' || true)
+          if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
+          echo "[PASS] plugprobe (Universal x86_64+arm64, system deps only)"
+
+      - name: Contract Tests
+        run: |
+          PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+            python3 tests/test_plugprobe.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugprobe-macos-${{ steps.extract_version.outputs.version }}
+          path: build/plugprobe_artefacts/Release/plugprobe
+
+      - name: Upload GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: build/plugprobe_artefacts/Release/plugprobe
+
+  build-linux:
+    name: Linux (x86_64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install JUCE System Dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -qq -y \
+            build-essential cmake \
+            libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          cmake --build build --config Release -j4
+
+      - name: Verify Static Language Runtimes
+        run: |
+          BIN=build/plugprobe_artefacts/Release/plugprobe
+          [ -x "$BIN" ] || { echo "binary missing: $BIN"; exit 1; }
+          LEAKS=$(ldd "$BIN" 2>/dev/null | grep -E 'libstdc\+\+\.so|libgcc_s\.so' || true)
+          if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
+          echo "[PASS] plugprobe (static libgcc/libstdc++, desktop syslibs dynamic)"
+
+      - name: Contract Tests
+        run: |
+          PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+            python3 tests/test_plugprobe.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugprobe-linux-${{ github.sha }}
+          path: build/plugprobe_artefacts/Release/plugprobe
+
+  build-windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Remove Strawberry Perl from PATH
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notlike '*Strawberry*' }) -join ';'
+          echo "PATH=$env:PATH" >> $env:GITHUB_ENV
+
+      - name: Set up MSVC Environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
+        shell: bash
+        run: |
+          cmake -B build -G "Ninja" -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: bash
+        run: |
+          cmake --build build --config Release -j4
+
+      - name: Contract Tests
+        shell: bash
+        run: |
+          PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe.exe \
+            python3 tests/test_plugprobe.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugprobe-windows-${{ github.sha }}
+          path: build/plugprobe_artefacts/Release/plugprobe.exe
