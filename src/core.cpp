@@ -199,8 +199,11 @@ bool findPlugin(const juce::String& q, const std::vector<juce::String>& dirs,
   juce::File qf(bq);
   std::vector<juce::String> ds = dirs;
   if (qf.exists()) {  // dir bundles + files (existsAsFile misses dirs)
-    ds.push_back(qf.isDirectory() ? qf.getFullPathName()
-                                  : qf.getParentDirectory().getFullPathName());
+    // A bundle path contributes its PARENT: bundles are discovered as
+    // children of search dirs, never as search dirs themselves. A plain
+    // directory additionally scans inside itself.
+    ds.push_back(qf.getParentDirectory().getFullPathName());
+    if (qf.isDirectory()) ds.push_back(qf.getFullPathName());
   }
   juce::KnownPluginList list;
   // Same cache as `scan {cache}` via PLUGPROBE_SCAN_CACHE, so repeated agent

@@ -403,9 +403,18 @@ int runSessionStop(const juce::var& args) {
     emitErr(errObj("IO", "session stop: cannot re-exec render"));
     return 1;
   }
-  cp.waitForProcessToFinish(300000);
+  // Drain while waiting: plugin chatter on stderr would deadlock a blind
+  // wait once the pipe fills (same lesson as the crash-isolation parent).
+  juce::String all;
+  int waited = 0;
+  while (cp.isRunning() && waited < 300000) {
+    all += cp.readAllProcessOutput();
+    juce::Thread::sleep(5);
+    waited += 5;
+  }
+  all += cp.readAllProcessOutput();
   juce::String last;
-  for (auto& ln : juce::StringArray::fromLines(cp.readAllProcessOutput()))
+  for (auto& ln : juce::StringArray::fromLines(all))
     if (ln.trim().isNotEmpty()) last = ln.trim();
   juce::var cr;
   if (!juce::JSON::parse(last, cr) || !cr.isObject() || !(bool)cr["ok"]) {
@@ -424,6 +433,11 @@ int runSessionStop(const juce::var& args) {
   o->setProperty("eventLog", juce::var(log));
   o->setProperty("hash", cr["data"]["hash"].toString());
   o->setProperty("peakDb", (double)cr["data"]["peakDb"]);
+  // Pass through the replay's video verdict (path or videoSkipped reason).
+  if (cr["data"].hasProperty("video"))
+    o->setProperty("video", cr["data"]["video"]);
+  if (cr["data"].hasProperty("videoSkipped"))
+    o->setProperty("videoSkipped", cr["data"]["videoSkipped"]);
   o->setProperty("xruns", 0);
   o->setProperty("timing", "agent-paced offline (v1): single loop pass, "
                            "events aligned by samplePos; realtime loop + "

@@ -64,6 +64,19 @@ jobs:
           PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
             python3 tests/test_plugprobe.py
 
+      - name: Example end-to-end (session + video)
+        run: |
+          mkdir -p example-takes
+          python3 scripts/example_session.py \
+            --bin $PWD/build/plugprobe_artefacts/Release/plugprobe \
+            --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
+            --out example-takes --require-video
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-takes-macos-${{ steps.extract_version.outputs.version }}
+          path: example-takes/
+
       - uses: actions/upload-artifact@v4
         with:
           name: plugprobe-macos-${{ steps.extract_version.outputs.version }}
@@ -113,6 +126,19 @@ jobs:
           PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
             python3 tests/test_plugprobe.py
 
+      - name: Example end-to-end (session, audio proof)
+        run: |
+          mkdir -p example-takes
+          python3 scripts/example_session.py \
+            --bin $PWD/build/plugprobe_artefacts/Release/plugprobe \
+            --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
+            --out example-takes
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-takes-linux-${{ github.sha }}
+          path: example-takes/
+
       - uses: actions/upload-artifact@v4
         with:
           name: plugprobe-linux-${{ github.sha }}
@@ -150,6 +176,20 @@ jobs:
         run: |
           PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe.exe \
             python3 tests/test_plugprobe.py
+
+      - name: Example end-to-end (session, audio proof)
+        shell: bash
+        run: |
+          mkdir -p example-takes
+          python3 scripts/example_session.py \
+            --bin $PWD/build/plugprobe_artefacts/Release/plugprobe.exe \
+            --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
+            --out example-takes
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: example-takes-windows-${{ github.sha }}
+          path: example-takes/
 
       - uses: actions/upload-artifact@v4
         with:

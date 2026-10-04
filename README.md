@@ -24,7 +24,7 @@ All commands: `plugprobe <cmd> --json <args.json>` →
 | `inspect` | `{plugin}` → automatable `params[]` + `editor:{width,height,hasUI}` |
 | `snapshot` | `{plugin, role?, limit?, offset?, shot?, visible?, holdMs?}` → AX node tree `[{id,role,name,enabled,value,bounds}]`. AX-empty custom-painted editors return containers only with `axEmpty:true` + fallback |
 | `act` | `{plugin, via:"os"\|"juce", action\|actions, shotAfter?, visible?, holdMs?}` → detached probe click/drag/type. Node-id press works headless via AX; raw `{x,y}` clicks, drag, type need `visible:true` + the macOS Accessibility grant for the current binary (ad-hoc rebuilds invalidate it) |
-| `render` | `{plugin, in, out, sr?, block?, params?, params_json?, midi?, midi_file?, bypass?, timeline?, shot?, visible?, holdMs?, video?}` → offline render. `params_json:preset.json` applies a `{"params":{...}}` preset file first (explicit `params` win). `midi:[{atMs,note,vel?,durMs?,ch?}]` / `midi_file:song.mid` (tempo-mapped) feeds instruments — silent `in` + notes is the synth smoke pattern. Every command runs crash-isolated: a dying plugin yields fail-loud `CRASH`, never a dead pipe. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click). `video:out.mp4` records the live window (implies `visible:true`, macOS-only) with the take muxed as audio; diagnostic-only (`video`/`videoSkipped`) — off-macOS the take still succeeds with `videoSkipped` |
+| `render` | `{plugin, in, out, sr?, block?, params?, params_json?, midi?, midi_file?, bypass?, timeline?, shot?, visible?, holdMs?, video?}` → offline render. `params_json:preset.json` applies a `{"params":{...}}` preset file first (explicit `params` win). `midi:[{atMs,note,vel?,durMs?,ch?}]` / `midi_file:song.mid` (tempo-mapped) feeds instruments — silent `in` + notes is the synth smoke pattern. Every command runs crash-isolated: a dying plugin yields fail-loud `CRASH`, never a dead pipe. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click). `video:out.mp4` records the editor window headless (frame-grab, no grant, macOS-only) with the take muxed as audio; diagnostic-only (`video`/`videoSkipped`) — off-macOS the take still succeeds with `videoSkipped` |
 | `compare` | `{a, b, slices?}` → `{nullDb,lufsDiff,spectralDist,sdrDb,artifactDb,costDelta}` |
 | `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?,dir?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?,at_ms?}` → `{atMs,paramDelta?,meters}`; `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
 | `meters` | `{session,window_ms?}` → `{peakDb,rmsDb,lufsM,crestDb,spectrum[16]}` (lufsM is an RMS proxy, same convention as `compare`) |
@@ -56,10 +56,9 @@ for — no globs over temp dirs:
   with: {name: takes, path: renders/}
 ```
 
-`video` needs a GUI session + the Screen Recording grant for the binary
-(pre-approve via MDM on self-hosted runners); without it the take still
-succeeds with `videoSkipped`. Headless Linux/Windows jobs omit `video`
-(`NO_OS_DRIVER`).
+`video` is frame-grabbed headless (no grant) on macOS; without a working
+encoder the take still succeeds with `videoSkipped`. Headless
+Linux/Windows jobs omit `video` (`NO_OS_DRIVER`).
 
 ## Examples
 
@@ -101,11 +100,15 @@ sudo cmake --install build --prefix /usr/local
 
 ```sh
 PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
-  python3 tests/test_plugprobe.py   # stdlib only, 7 contract tests
+  python3 tests/test_plugprobe.py   # stdlib only, 13 contract tests
 ```
 
 `scripts/matrix.py` renders a directory of inputs through a plugin and
 writes a per-file compare CSV against a reference plugin.
+
+`scripts/example_session.py` is the CI end-to-end proof: white noise through
+the bundled example lowpass, cutoff swept 20kHz→1kHz via session acts, take
++ video (`sweep.mp4`) uploaded as artifacts.
 
 ## Layout
 
@@ -127,6 +130,8 @@ src/plugprobe_os_mac.mm macOS AX/CGEvent driver + NSView capture
 src/plugprobe_os_win.cpp / plugprobe_os_linux.cpp  stub backends (fail loud)
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
+scripts/example_session.py  CI end-to-end (noise -> example sweep -> take+video)
+example/lowpass/       fixture plugin (smooth lowpass + spectrum + slider)
 ```
 
 ## License

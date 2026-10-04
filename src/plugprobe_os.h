@@ -43,12 +43,15 @@ void plugprobePumpApp(double seconds);
 // HID drag/type must check this at runtime.
 #endif
 
-// --- Screen recording (opt-in `video` on render; macOS AVCapture only) ---
-// Opaque handle; start captures the display region behind the editor window
-// (needs it on-screen + the Screen Recording grant). finish stops capture
-// and muxes wavIn (the rendered take) as the audio track into mp4Out, so
-// what you see produced exactly what you hear. Diagnostic-only: failures
-// return false/empty, never throw; the audio take is unaffected.
+// --- Screen recording (opt-in `video` on render; macOS only) ---
+// Frame-grab, not screen capture: the editor view renders itself into a
+// bitmap per grab (same path as headless shots — works hidden, no Screen
+// Recording grant, no visible window). Finish encodes H.264 via
+// AVAssetWriter and appends wavIn (the take) as the AAC track, so what you
+// see produced exactly what you hear. Grab from the paced loop (it
+// self-throttles to ~15fps). Diagnostic-only: failures return
+// false/empty, never throw; the audio take is unaffected.
 void* plugprobeScreenRecStart(void* nsView, std::string& err);
+void plugprobeScreenRecGrab(void* rec);
 bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
                               std::string& err);

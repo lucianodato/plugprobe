@@ -26,6 +26,7 @@ void plugprobePumpApp(double) {}
 // Real backend: PipeWire portal capture + GStreamer/ffmpeg-free MP4 mux
 // (see macOS backend for the shape).
 void* plugprobeScreenRecStart(void*, std::string&) { return nullptr; }
+void plugprobeScreenRecGrab(void*) {}
 bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
   return false;
 }

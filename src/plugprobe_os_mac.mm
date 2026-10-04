@@ -6,6 +6,8 @@
 // views, so the NSView is asked to render itself into a bitmap rep.
 #import <Cocoa/Cocoa.h>
 #import <AVFoundation/AVFoundation.h>
+#import <CoreVideo/CoreVideo.h>
+#import <ImageIO/ImageIO.h>
 
 #include "plugprobe_os.h"
 
@@ -467,47 +469,16 @@ int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h) {
   return -1;
 }
 // --- Screen recording (opt-in `video` on render) ---
-// AVCaptureSession + MovieFileOutput on the window's display, cropped to the
-// window frame (static while rendering), then the take WAV muxed in as the
-// audio track. Offline renders play no device audio, so capturing system
+// Frame-grab, not screen capture: the editor NSView renders itself into a
+// bitmap per grab (same path as headless shots — works hidden, no Screen
+// Recording grant, no visible window, no cursor). Grabs buffer as JPEGs
+// (~20KB/frame, bounded memory); finish encodes H.264 via AVAssetWriter and
+// appends the take WAV as the AAC track, padding the last frame to cover
+// the audio. Offline renders play no device audio, so capturing system
 // audio would record silence — the take file IS the soundtrack.
-// ponytail: AVCapture over ScreenCaptureKit — 40 lines, sync API, no new
-// deps; graduate if window-targeted capture is ever needed.
-#if __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
-@interface PPRecDelegate : NSObject <AVCaptureFileOutputRecordingDelegate> {
- @public volatile bool started;
- @public volatile bool done;
- @public bool ok;
-}
-@end
-@implementation PPRecDelegate
-- (void)captureOutput:(AVCaptureFileOutput*)o
-    didStartRecordingToOutputFileAtURL:(NSURL*)u
-                       fromConnections:(NSArray*)c {
-  (void)o;
-  (void)u;
-  (void)c;
-  started = true;
-}
-- (void)captureOutput:(AVCaptureFileOutput*)o
-    didFinishRecordingToOutputFileAtURL:(NSURL*)u
-                       fromConnections:(NSArray*)c
-                                 error:(NSError*)e {
-  (void)o;
-  (void)u;
-  (void)c;
-  ok = (e == nil);
-  done = true;
-}
-@end
-#if __clang__
-#pragma clang diagnostic pop
-#endif
-// Retained-box macros: the .mm builds without ARC, so ObjC objects in the
-// C++ ScreenRec box need explicit CF retains (no-ops under ARC).
+// ponytail: fixed ~15fps; enough to watch a slider sweep + FFT move.
+// Retained-box macros: the .mm builds without ARC, so ObjC/CF objects in
+// the C++ ScreenRec box need explicit retains (no-ops under ARC).
 #if __has_feature(objc_arc)
 #define PP_RETAINED(p) ((void*)CFBridgingRetain(p))
 #define PP_BRIDGE(T, p) ((__bridge T)(p))
@@ -516,91 +487,89 @@ int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h) {
 #define PP_BRIDGE(T, p) ((T)(p))
 #endif
 struct ScreenRec {
-  void* ses = nullptr;  // __bridge_retained, CFReleased in finish
-  void* out = nullptr;
-  void* del = nullptr;
-  void* tmp = nullptr;  // NSURL of the silent .mov
+  void* view = nullptr;  // NSView, owned by the JUCE editor (not retained)
+  std::vector<void*> frames;  // JPEG NSDatas, CFReleased in finish
+  int w = 0, h = 0;           // even-sized encode dims from the first frame
+  double lastGrab = 0;        // throttle stamp
 };
-static bool pumpUntil(volatile bool* flag, double timeoutS) {
-  NSDate* end = [NSDate dateWithTimeIntervalSinceNow:timeoutS];
-  while (!*flag && [end timeIntervalSinceNow] > 0)
-    [[NSRunLoop mainRunLoop]
-        runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.1]];
-  return *flag;
+// Render the view into a JPEG (same forced-paint path as headless shots).
+// Null when the view has no size or won't paint (Metal/async editors).
+static void* grabJpeg(NSView* v, int* w, int* h) {
+  NSRect b = [v bounds];
+  if (b.size.width < 2 || b.size.height < 2) return nullptr;
+  [v setNeedsDisplay:YES];
+  [v displayIfNeededIgnoringOpacity];
+  NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:b];
+  if (rep == nil) return nullptr;
+  [v cacheDisplayInRect:b toBitmapImageRep:rep];
+  NSData* jpg = [rep representationUsingType:NSJPEGFileType
+                                  properties:@{NSImageCompressionFactor: @0.7}];
+  if (jpg == nil || [jpg length] == 0) return nullptr;
+  int w2 = ((int)b.size.width) & ~1, h2 = ((int)b.size.height) & ~1;
+  if (w2 < 2 || h2 < 2) return nullptr;
+  if (w != nullptr) *w = w2;
+  if (h != nullptr) *h = h2;
+  return PP_RETAINED(jpg);
+}
+// JPEG -> 32ARGB pixel buffer at encode size (CoreGraphics converts).
+static void* pxFromJpeg(void* jpg, int w, int h) {
+  CGImageSourceRef src = CGImageSourceCreateWithData((CFDataRef)jpg, nullptr);
+  if (src == nullptr) return nullptr;
+  CGImageRef img = CGImageSourceCreateImageAtIndex(src, 0, nullptr);
+  CFRelease(src);
+  if (img == nullptr) return nullptr;
+  CVPixelBufferRef px = nullptr;
+  if (CVPixelBufferCreate(kCFAllocatorDefault, (size_t)w, (size_t)h,
+                          kCVPixelFormatType_32ARGB, nullptr, &px) !=
+      kCVReturnSuccess) {
+    CGImageRelease(img);
+    return nullptr;
+  }
+  CVPixelBufferLockBaseAddress(px, 0);
+  CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGContextRef ctx = CGBitmapContextCreate(
+      CVPixelBufferGetBaseAddress(px), (size_t)w, (size_t)h, 8,
+      CVPixelBufferGetBytesPerRow(px), cs,
+      kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Big);
+  if (ctx != nullptr) {
+    CGContextDrawImage(ctx, CGRectMake(0, 0, w, h), img);
+    CGContextRelease(ctx);
+  }
+  CGColorSpaceRelease(cs);
+  CVPixelBufferUnlockBaseAddress(px, 0);
+  CGImageRelease(img);
+  return px;
 }
 void* plugprobeScreenRecStart(void* nsView, std::string& err) {
   if (nsView == nullptr) {
     err = "no-editor";
     return nullptr;
   }
-  if (!CGPreflightScreenCaptureAccess()) {
-    err = "screen-recording grant missing for THIS plugprobe binary "
-          "(Settings → Privacy → Screen Recording; ad-hoc rebuilds change "
-          "its hash and invalidate the grant)";
-    return nullptr;
-  }
-  NSWindow* w = [(NSView*)nsView window];
-  if (w == nil || ![w isVisible]) {
-    err = "editor window is not on-screen (video needs \"visible\":true)";
-    return nullptr;
-  }
-  NSRect f = [w frame];
-  CGFloat sh = [[NSScreen mainScreen] frame].size.height;
-  CGRect crop = CGRectMake(f.origin.x, sh - (f.origin.y + f.size.height),
-                           f.size.width, f.size.height);
-  CGDirectDisplayID did = (CGDirectDisplayID)[[[w screen] deviceDescription]
-      [@"NSScreenNumber"] unsignedIntValue];
-#if __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  AVCaptureScreenInput* in =
-      [[AVCaptureScreenInput alloc] initWithDisplayID:did];
-#if __clang__
-#pragma clang diagnostic pop
-#endif
-  if (in == nil) {
-    err = "screen input unavailable";
-    return nullptr;
-  }
-  in.cropRect = crop;
-  in.capturesCursor = YES;
-  in.capturesMouseClicks = YES;  // the clicks under test stay visible
-  in.minFrameDuration = CMTimeMake(1, 15);
-  AVCaptureSession* ses = [[AVCaptureSession alloc] init];
-  AVCaptureMovieFileOutput* mov = [[AVCaptureMovieFileOutput alloc] init];
-  if (![ses canAddInput:in] || ![ses canAddOutput:mov]) {
-    err = "screen capture session rejected input/output";
-    return nullptr;
-  }
-  [ses addInput:in];
-  [ses addOutput:mov];
-  [ses startRunning];
-  if (![ses isRunning]) {
-    err = "screen capture session would not start";
-    return nullptr;
-  }
-  NSString* tmp = [NSTemporaryDirectory()
-      stringByAppendingPathComponent:
-          [NSString stringWithFormat:@"pp-vid-%d.mov", getpid()]];
-  [[NSFileManager defaultManager] removeItemAtPath:tmp error:nil];
-  PPRecDelegate* del = [[PPRecDelegate alloc] init];
-  del->started = false;
-  del->done = false;
-  del->ok = false;
-  [mov startRecordingToOutputFileURL:[NSURL fileURLWithPath:tmp]
-                   recordingDelegate:del];
-  if (!pumpUntil(&del->started, 5.0)) {
-    [ses stopRunning];
-    err = "screen capture never started recording";
-    return nullptr;
-  }
-  ScreenRec* r = new ScreenRec();
-  r->ses = PP_RETAINED(ses);
-  r->out = PP_RETAINED(mov);
-  r->del = PP_RETAINED(del);
-  r->tmp = PP_RETAINED([NSURL fileURLWithPath:tmp]);
+  // No grant checks, no visibility requirement: grabs render the view
+  // in-process (headless-safe, CI-safe).
+  auto* r = new ScreenRec();
+  r->view = nsView;
+  r->lastGrab = CFAbsoluteTimeGetCurrent() - 1;  // first frame ASAP
   return r;
+}
+void plugprobeScreenRecGrab(void* rec) {
+  auto* r = (ScreenRec*)rec;
+  if (r == nullptr || r->view == nullptr) return;
+  double now = CFAbsoluteTimeGetCurrent();
+  if (now - r->lastGrab < 1.0 / 15.0) return;
+  r->lastGrab = now;
+  int w = 0, h = 0;
+  void* jpg = grabJpeg((NSView*)r->view, &w, &h);
+  if (jpg == nullptr) return;  // view won't paint; take is unaffected
+  if (r->frames.empty()) {
+    r->w = w;
+    r->h = h;
+  }
+  if (w != r->w || h != r->h) {
+    CFRelease(jpg);  // resize mid-take: keep the first size
+    return;
+  }
+  r->frames.push_back(jpg);
 }
 bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
                               std::string& err) {
@@ -609,86 +578,143 @@ bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
     err = "bad recorder";
     return false;
   }
-  auto* mov = PP_BRIDGE(AVCaptureMovieFileOutput*, r->out);
-  auto* del = PP_BRIDGE(PPRecDelegate*, r->del);
-  auto* tmpURL = PP_BRIDGE(NSURL*, r->tmp);
-  [mov stopRecording];
-  if (!pumpUntil(&del->done, 30.0) || !del->ok) {
-    err = "screen capture produced no file";
+  if (r->frames.empty()) {
+    err = "no frames grabbed (view never painted)";
     return false;
   }
-  [PP_BRIDGE(AVCaptureSession*, r->ses) stopRunning];
-  // Mux: silent window video + take WAV as the audio track.
-  AVURLAsset* va = [AVURLAsset assetWithURL:tmpURL];
-  AVURLAsset* aa = [AVURLAsset
-      assetWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:wavIn]]];
-  // ponytail: sync track fetch; the async replacement is overkill for two
-  // local files muxed once per run.
-#if __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#endif
-  AVAssetTrack* vt = [[va tracksWithMediaType:AVMediaTypeVideo] firstObject];
-  AVAssetTrack* at = [[aa tracksWithMediaType:AVMediaTypeAudio] firstObject];
-#if __clang__
-#pragma clang diagnostic pop
-#endif
-  if (vt == nil || at == nil) {
-    err = "mux source has no video/audio track";
-    return false;
-  }
-  AVMutableComposition* comp = [AVMutableComposition composition];
-  NSError* e = nil;
-  AVMutableCompositionTrack* cvt = [comp
-      addMutableTrackWithMediaType:AVMediaTypeVideo
-                  preferredTrackID:kCMPersistentTrackID_Invalid];
-  CMTime dur = va.duration;
-  if (![cvt insertTimeRange:CMTimeRangeMake(kCMTimeZero, dur)
-                    ofTrack:vt
-                     atTime:kCMTimeZero
-                      error:&e]) {
-    err = "mux video insert failed";
-    return false;
-  }
-  AVMutableCompositionTrack* cat = [comp
-      addMutableTrackWithMediaType:AVMediaTypeAudio
-                  preferredTrackID:kCMPersistentTrackID_Invalid];
-  if (![cat insertTimeRange:CMTimeRangeMake(kCMTimeZero, dur)
-                    ofTrack:at
-                     atTime:kCMTimeZero
-                      error:&e]) {
-    err = "mux audio insert failed";
-    return false;
-  }
-  NSString* mp4 = [NSString stringWithUTF8String:mp4Out];
+  NSString* mp4 =
+      [NSString stringWithUTF8String:mp4Out] ?: @"";
   [[NSFileManager defaultManager]
       createDirectoryAtPath:[mp4 stringByDeletingLastPathComponent]
           withIntermediateDirectories:YES
                            attributes:nil
                                 error:nil];
   [[NSFileManager defaultManager] removeItemAtPath:mp4 error:nil];
-  AVAssetExportSession* ex = [AVAssetExportSession
-      exportSessionWithAsset:comp
-                  presetName:AVAssetExportPresetHighestQuality];
-  if (ex == nil) {
-    err = "export session unavailable";
+  NSError* e = nil;
+  AVAssetWriter* wr = [[AVAssetWriter alloc] initWithURL:[NSURL fileURLWithPath:mp4]
+                                               fileType:AVFileTypeMPEG4
+                                                  error:&e];
+  if (wr == nil) {
+    err = "writer unavailable";
     return false;
   }
-  ex.outputURL = [NSURL fileURLWithPath:mp4];
-  ex.outputFileType = AVFileTypeMPEG4;
-  __block volatile bool exDone = false;
-  __block BOOL exOk = NO;
-  [ex exportAsynchronouslyWithCompletionHandler:^{
-    exOk = (ex.status == AVAssetExportSessionStatusCompleted);
-    exDone = true;
-  }];
-  if (!pumpUntil(&exDone, 120.0) || !exOk) {
-    err = "video export failed";
+  AVAssetWriterInput* vin = [AVAssetWriterInput
+      assetWriterInputWithMediaType:AVMediaTypeVideo
+                     outputSettings:@{
+                       AVVideoCodecKey: AVVideoCodecTypeH264,
+                       AVVideoWidthKey: @(r->w),
+                       AVVideoHeightKey: @(r->h)
+                     }];
+  vin.expectsMediaDataInRealTime = NO;
+  AVAssetWriterInputPixelBufferAdaptor* ad =
+      [AVAssetWriterInputPixelBufferAdaptor
+          assetWriterInputPixelBufferAdaptorWithAssetWriterInput:vin
+                                    sourcePixelBufferAttributes:@{
+                                      (id)kCVPixelBufferPixelFormatTypeKey:
+                                          @(kCVPixelFormatType_32ARGB)
+                                    }];
+  // Take WAV as the AAC track (reader passthrough -> encoder).
+  AVURLAsset* aa = [AVURLAsset
+      assetWithURL:[NSURL fileURLWithPath:[NSString stringWithUTF8String:wavIn]]];
+// ponytail: sync track fetch; the async replacement is overkill for two
+// local files muxed once per run.
+#if __clang__
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+  AVAssetTrack* at = [[aa tracksWithMediaType:AVMediaTypeAudio] firstObject];
+#if __clang__
+#pragma clang diagnostic pop
+#endif
+  if (at == nil) {
+    err = "take has no audio track";
     return false;
   }
-  [[NSFileManager defaultManager] removeItemAtPath:[tmpURL path] error:nil];
-  for (void* p : {r->ses, r->out, r->del, r->tmp})
-    if (p) CFRelease(p);
-  r->ses = r->out = r->del = r->tmp = nullptr;
+  const AudioStreamBasicDescription* asbd = CMAudioFormatDescriptionGetStreamBasicDescription(
+      (CMFormatDescriptionRef)[at.formatDescriptions firstObject]);
+  if (asbd == nullptr) {
+    err = "take audio format unreadable";
+    return false;
+  }
+  AVAssetWriterInput* ain = [AVAssetWriterInput
+      assetWriterInputWithMediaType:AVMediaTypeAudio
+                     outputSettings:@{
+                       AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+                       AVSampleRateKey: @(asbd->mSampleRate),
+                       AVNumberOfChannelsKey: @(asbd->mChannelsPerFrame),
+                       AVEncoderBitRateKey: @128000
+                     }];
+  ain.expectsMediaDataInRealTime = NO;
+  AVAssetReader* rd = [AVAssetReader assetReaderWithAsset:aa error:&e];
+  AVAssetReaderTrackOutput* rout =
+      [AVAssetReaderTrackOutput assetReaderTrackOutputWithTrack:at
+                                                 outputSettings:nil];
+  if (rd == nil || ![wr canAddInput:vin] || ![wr canAddInput:ain] ||
+      ![rd canAddOutput:rout]) {
+    err = "writer/reader rejected inputs";
+    return false;
+  }
+  [wr addInput:vin];
+  [wr addInput:ain];
+  [rd addOutput:rout];
+  if (![wr startWriting]) {
+    err = "writer would not start";
+    return false;
+  }
+  [wr startSessionAtSourceTime:kCMTimeZero];
+  auto waitReady = [](AVAssetWriterInput* in) {
+    // Pump, don't sleep: media machinery needs main-runloop turns.
+    for (int i = 0; i < 2000 && ![in isReadyForMoreMediaData]; ++i)
+      [[NSRunLoop currentRunLoop]
+          runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.005]];
+    return [in isReadyForMoreMediaData];
+  };
+  // Audio FIRST: the muxer backpressures any track that runs ~1.5s ahead of
+  // another starved one, so the complete (small) AAC track goes in before
+  // the video stream starts. Video-first stalls at ~25 frames, every time.
+  if (![rd startReading]) {
+    err = "take reader would not start";
+    return false;
+  }
+  while (rd.status == AVAssetReaderStatusReading) {
+    CMSampleBufferRef sb = [rout copyNextSampleBuffer];
+    if (sb == nullptr) break;
+    if (waitReady(ain)) [ain appendSampleBuffer:sb];
+    CFRelease(sb);
+  }
+  [ain markAsFinished];
+  // Video: one presentation stamp per grabbed frame; pad the last frame to
+  // cover the audio so A/V end together.
+  CMTime fd = CMTimeMake(1, 15);
+  size_t n = r->frames.size();
+  auto appendPx = [&](void* jpg, CMTime t) {
+    void* px = pxFromJpeg(jpg, r->w, r->h);
+    if (px == nullptr) return false;
+    if (waitReady(vin) &&
+        [ad appendPixelBuffer:(CVPixelBufferRef)px withPresentationTime:t]) {
+      CFRelease(px);
+      return true;
+    }
+    CFRelease(px);
+    return false;
+  };
+  for (size_t i = 0; i < n; ++i)
+    if (!appendPx(r->frames[i], CMTimeMultiply(fd, (int64_t)i))) {
+      err = "video append failed";
+      return false;
+    }
+  for (int64_t i = (int64_t)n;
+       CMTimeCompare(CMTimeMultiply(fd, i), aa.duration) < 0 &&
+       i < (int64_t)n + 15 * 60;
+       ++i)
+    if (!appendPx(r->frames.back(), CMTimeMultiply(fd, i))) break;
+  [vin markAsFinished];
+  [wr finishWriting];
+  for (void* p : r->frames) CFRelease(p);
+  r->frames.clear();
+  if (wr.status != AVAssetWriterStatusCompleted) {
+    err = "video write failed";
+    return false;
+  }
   return true;
 }

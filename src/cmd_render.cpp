@@ -37,12 +37,11 @@ int runRender(const juce::var& args)
     bool wantShot = jstr(args, "shot").isNotEmpty();
     bool wantVis = (bool)args["visible"];
     juce::String videoP = jstr(args, "video");
+    // Frame-grab video works headless (no grant, no visible window).
     if (videoP.isNotEmpty()) {
 #if !JUCE_MAC
       // Diagnostic-only like shots: the take still succeeds with videoSkipped.
       vidWhy = "macOS-only (NO_OS_DRIVER); take unaffected";
-#else
-      if (!wantVis) wantVis = true;  // video watches the live window
 #endif
     }
     // Preset files (presets/*.json) load before plugin lookup so a missing
@@ -350,11 +349,12 @@ int runRender(const juce::var& args)
         std::sort(evs.begin(), evs.end(),
                   [](const Ev& a, const Ev& b) { return a.frame < b.frame; });
       }
-      // Editor for mid-render shots/clicks: hidden unless visible. Only
-      // opened when captures or clicks were requested, so pure-headless
-      // renders stay byte-identical.
+      // Editor for mid-render shots/clicks/video: hidden unless visible.
+      // Only opened when captures or clicks were requested, so
+      // pure-headless renders stay byte-identical.
       if (guiOwned != nullptr && visEd == nullptr &&
-          (wantVis || wantShot || hasEntryShot || hasEntryClick)) {
+          (wantVis || wantShot || hasEntryShot || hasEntryClick ||
+           videoP.isNotEmpty())) {
         juce::String why;
         visEd = openEditor(*guiOwned, wantVis, why);
         if (visEd == nullptr) {
@@ -510,6 +510,10 @@ int runRender(const juce::var& args)
           for (int i = 0; i < m; ++i) out[(size_t)c][pos + (size_t)i] = r[i];
         }
         if (visEd != nullptr) paceToRealtime(paceT0, pos + (size_t)m, sr);
+        if (vidRec != nullptr) {
+          pumpMessages();  // fresh paint before the grab
+          plugprobeScreenRecGrab(vidRec);
+        }
       }
       int tailN = (int)(jnum(args, "tail_ms", 500.0) / 1000.0 * sr);
       if (tailN > 0) {
@@ -529,6 +533,10 @@ int runRender(const juce::var& args)
           }
           if (visEd != nullptr)
             paceToRealtime(paceT0, n + (size_t)(pos + m), sr);
+          if (vidRec != nullptr) {
+            pumpMessages();
+            plugprobeScreenRecGrab(vidRec);
+          }
         }
       }
       inst->releaseResources();
