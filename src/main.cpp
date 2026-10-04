@@ -1,5 +1,5 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
-// main.cpp: arg parsing, command dispatch, session stubs.
+// main.cpp: arg parsing, command dispatch.
 #include "cmds.h"
 #include "core.h"
 

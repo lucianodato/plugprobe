@@ -248,6 +248,8 @@ names the exact native APIs its real backend needs.
    flag files, per-version scales).
 3. **M2 live session + ears:** `session start|act|stop` + `meters` taps;
    agent tweaks mid-loop and reads peak/LUFS/spectrum deltas.
+   DONE (file-backed, agent-paced: single loop pass, events aligned by
+   samplePos; realtime loop + monitor mirror are the documented ceiling).
 4. **M3 compare kit:** `compare --slices` ported from
    `rx-ab-study/{compare,delta,metrics,speech_cost}.py` + matrix script
    from `engines.py:render_ours()` minus REAPER/CG hacks + `setup-plugprobe`

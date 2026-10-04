@@ -1,5 +1,5 @@
 # GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
-"""M0+M3 contract tests, stdlib only. Needs PLUGPROBE_BIN (else skips buildable tests)."""
+"""M0+M2+M3 contract tests, stdlib only. Needs PLUGPROBE_BIN (else skips buildable tests)."""
 import json
 import math
 import os
@@ -9,7 +9,7 @@ import tempfile
 import unittest
 import wave
 
-BIN = os.environ.get("PLUGPROBE_BIN", os.environ.get("PHOST_BIN", ""))
+BIN = os.environ.get("PLUGPROBE_BIN", "")
 
 
 def make_wav(path, secs=1.0, sr=48000, freq=440.0):

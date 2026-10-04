@@ -91,7 +91,7 @@ sudo cmake --install build --prefix /usr/local
 
 ```sh
 PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
-  python3 tests/test_plugprobe.py   # stdlib only, 5 contract tests
+  python3 tests/test_plugprobe.py   # stdlib only, 6 contract tests
 ```
 
 `scripts/matrix.py` renders a directory of inputs through a plugin and
@@ -100,23 +100,24 @@ writes a per-file compare CSV against a reference plugin.
 ## Layout
 
 ```
-src/main.cpp            arg parsing, dispatch (incl. session/meters)
+src/main.cpp            arg parsing, dispatch to cmd_*.cpp
 src/core.cpp / core.h   emit, JSON args, hosting, params, WAV, metrics
 src/gui.cpp / gui.h     live-editor open/hold/capture/hit-test
 src/session.cpp / session.h  M2 session files, offline loop render, meters
-src/cmd_session.cpp     session start|act|stop + meters
-src/core.cpp / core.h   emit, JSON args, hosting, params, WAV, metrics
-src/gui.cpp / gui.h     live-editor open/hold/capture/hit-test
+src/cmds.h              one run function per CLI command
 src/cmd_scan.cpp        scan installed plugins
 src/cmd_inspect.cpp     params + editor size
 src/cmd_snapshot.cpp    AX tree dump + opt-in shot
 src/cmd_act.cpp         detached probe click/drag/type
 src/cmd_render.cpp      offline render + learn-freeze timeline
 src/cmd_compare.cpp     null/LUFS/spectral/SDR/cost diff
+src/cmd_session.cpp     session start|act|stop + meters
 src/plugprobe_os.h      OS-layer interface (front/capture/tree/input)
+src/plugprobe_os_mac.mm macOS AX/CGEvent driver + NSView capture
+src/plugprobe_os_win.cpp / plugprobe_os_linux.cpp  stub backends (fail loud)
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
-SPEC.md                full spec (v0.2, pre-rename; CLI contract in §3)
+SPEC.md                full spec (CLI contract in §3)
 ```
 
 ## License

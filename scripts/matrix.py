@@ -36,7 +36,7 @@ def main():
     ap.add_argument("--takes", default="",
                     help="dir for rendered takes (uploadable artifacts); "
                          "default: system temp (takes not kept)")
-    ap.add_argument("--bin", default=os.environ.get("PLUGPROBE_BIN", os.environ.get("PHOST_BIN", "plugprobe")))
+    ap.add_argument("--bin", default=os.environ.get("PLUGPROBE_BIN", "plugprobe"))
     ap.add_argument("--sr", type=float, default=48000)
     ap.add_argument("--block", type=int, default=512)
     ap.add_argument("--params_json", default="")
