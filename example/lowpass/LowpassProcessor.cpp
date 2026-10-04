@@ -32,6 +32,11 @@ void LowpassProcessor::processBlock(juce::AudioBuffer<float>& io, juce::MidiBuff
       if (c == 0 && fifoPos < fftSize) fifo[(size_t)fifoPos++] = y;
     }
     if (fifoPos >= fftSize) {
+      for (int i = 0; i < fftSize; ++i) {  // Hann: leakage-free curve follow
+        float wn = 0.5f * (1.f - std::cos(2 * juce::MathConstants<float>::pi *
+                                          i / (fftSize - 1)));
+        fifo[(size_t)i] *= wn;
+      }
       std::fill(fifo.begin() + fftSize, fifo.end(), 0);
       fft.performFrequencyOnlyForwardTransform(fifo.data());
       for (int k = 0; k < 1024; ++k) spectrum[(size_t)k] = fifo[(size_t)k];
@@ -123,14 +128,61 @@ class Spectrum : public juce::Component, private juce::Timer {
       g.drawText(label, (int)x + 4, (int)h - 14, 40, 12,
                  juce::Justification::left);
     }
-    juce::Path curve;  // output spectrum, aqua with alpha fill
-    bool started = false;
+    // dBFS: Hann-windowed full-scale sine peaks at fftSize/4 (JUCE forward
+    // FFT is unnormalized), so magnitudes are divided by 512 — raw bins
+    // carry ~+60dB of FFT gain and pin everything to the display ceiling.
+    auto magToDb = [](float m) {
+      return 20 * std::log10(m / 512.f + 1e-6f);
+    };
+    auto yForDb = [&](float db) {
+      return h - (juce::jlimit(-100.f, -20.f, db) + 100) / 80 * h;
+    };
     float sr = proc.getSampleRate() > 0 ? (float)proc.getSampleRate() : 48000.f;
+    float fc = proc.cutoffParam()->get();
+    // Passband anchor: mean FFT level well below cutoff, so theory (0dB at
+    // DC + trim) sits at the same amplitude as the measured curve.
+    float ref = -100.f;
+    {
+      double sum = 0;
+      int cnt = 0;
+      for (int k = 1; k < 1024 && cnt < 40; ++k) {
+        float hz = k * sr / 2048.f;
+        if (hz < 20) continue;
+        if (hz > fc * 0.5f && cnt >= 5) break;
+        sum += magToDb(bins[(size_t)k]);
+        ++cnt;
+      }
+      if (cnt > 0) ref = (float)(sum / cnt);
+    }
+    float trimDb = 20 * std::log10(std::max(1e-3f, proc.trim.load()));
+    juce::Path theory;  // ideal 12dB/oct response at the measured level
+    {
+      bool st = false;
+      for (int i = 0; i <= 200; ++i) {
+        float hz = 20.f * std::pow(1000.f, i / 200.f);  // 20..20000 log sweep
+        float rr = hz / std::max(20.f, fc);
+        // 2-pole lowpass |H| with Q=0.707 (matches the TPT SVF in DSP).
+        float mag = 1.f / std::sqrt((1 - rr * rr) * (1 - rr * rr) +
+                                    rr * rr / (0.7071f * 0.7071f));
+        float y = yForDb(ref + 20 * std::log10(mag + 1e-6f) + trimDb);
+        float x = xForFreq(hz, w);
+        if (!st) {
+          theory.startNewSubPath(x, y);
+          st = true;
+        } else {
+          theory.lineTo(x, y);
+        }
+      }
+    }
+    g.setColour(kAmber);
+    g.strokePath(theory, juce::PathStrokeType(2.0f));
+    juce::Path curve;  // measured output spectrum, aqua with alpha fill
+    bool started = false;
     for (int k = 1; k < 1024; ++k) {
       float hz = k * sr / 2048.f;
       if (hz < 20 || hz > 20000) continue;
-      float db = 20 * std::log10(bins[(size_t)k] + 1e-6f);
-      float y = h - (juce::jlimit(-100.f, -20.f, db) + 100) / 80 * h;
+      float db = magToDb(bins[(size_t)k]);
+      float y = yForDb(db);
       float x = xForFreq(hz, w);
       if (!started) {
         curve.startNewSubPath(x, y);
@@ -148,16 +200,27 @@ class Spectrum : public juce::Component, private juce::Timer {
       g.fillPath(fill);
       g.setColour(kAqua);
       g.strokePath(curve, juce::PathStrokeType(1.5f));
-      float cx = xForFreq(proc.cutoffParam()->get(), w);  // cutoff marker
-      g.setColour(kAmber);
+      float cx = xForFreq(fc, w);  // cutoff marker (white: theory is amber)
+      g.setColour(juce::Colours::white.withAlpha(0.7f));
       g.drawVerticalLine((int)cx, 0.0f, h);
+      g.setFont(juce::FontOptions(11.0f, juce::Font::bold));
+      g.setColour(kAmber);
+      g.drawText("filter", 8, 4, 80, 12, juce::Justification::left);
+      g.setColour(kAqua);
+      g.drawText("signal", 8, 18, 80, 12, juce::Justification::left);
     }
   }
 
   void timerCallback() override {
-    if (proc.spectrumIfFresh(raw)) {
+    bool got = proc.spectrumIfFresh(raw);
+    if (got) {
       for (size_t k = 0; k < bins.size(); ++k)  // gentle temporal smoothing
         bins[k] += 0.5f * (raw[k] - bins[k]);
+    }
+    float fc = proc.cutoffParam()->get(), tr = proc.trim.load();
+    if (got || fc != lastFc || tr != lastTrim) {  // theory follows UI w/o audio
+      lastFc = fc;
+      lastTrim = tr;
       repaint();
     }
   }
@@ -165,6 +228,7 @@ class Spectrum : public juce::Component, private juce::Timer {
  private:
   LowpassProcessor& proc;
   std::array<float, 1024> raw{}, bins{};
+  float lastFc = -1, lastTrim = -1;
 };
 class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
  public:
