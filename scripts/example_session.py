@@ -68,6 +68,11 @@ def main():
     if mac:
         # Detached first, then replayed in the take.
         d = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
+                               "action": {"target": "AXSlider:Cutoff",
+                                          "op": "set", "value": 15000}})
+        assert d["ok"], d
+        assert abs(d["data"]["results"][0]["state"] - 15000) < 1e-6, d
+        d = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
                                "action": {"target": "AXSlider:Trim",
                                           "op": "set", "value": 1.5}})
         assert d["ok"], d
