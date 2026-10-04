@@ -517,7 +517,7 @@ int runRender(const juce::var& args)
             double actual = 0;
             juce::String serr;
             if (!axWaitForId(visEd->getWindowHandle(), evs[ei].sliderTarget,
-                             2000)) {
+                             10000)) {
               serr = "unknown node '" + evs[ei].sliderTarget +
                      "' (snapshot lists ids)";
             } else {

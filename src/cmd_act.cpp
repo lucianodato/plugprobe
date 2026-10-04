@@ -329,9 +329,21 @@ int runAct(const juce::var& args)
         } else if (op == "set") {
           // Third-party views attach async: wait for the node (pumping)
           // instead of racing it, then set grant-free.
-          if (!axWaitForId(hv, tgt, 2000)) {
+          if (!axWaitForId(hv, tgt, 10000)) {
+            juce::String seen;
+            auto nodes = plugprobeAxDump(hv);
+            for (size_t i = 0; i < nodes.size() && i < 20; ++i) {
+              if (i) seen += ",";
+              seen += juce::String(nodes[i].id);
+            }
             emitErr(errObj("ARGS", "os act: unknown node '" + tgt +
-                                     "' (snapshot lists ids)"));
+                                     "' (have " +
+                                     juce::String((int)nodes.size()) +
+                                     ": " + seen +
+                                     "; trusted=" +
+                                     juce::String(AXIsProcessTrusted() ? "yes"
+                                                                        : "no") +
+                                     ")"));
             return false;
           }
           double v = (double)s["value"];  // native control units

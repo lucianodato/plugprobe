@@ -301,7 +301,7 @@ int runSessionAct(const juce::var& args) {
                      juce::String("session act slider needs an editor: ") + why));
       return 1;
     }
-    if (!axWaitForId(ed->getWindowHandle(), sTarget, 2000)) {
+    if (!axWaitForId(ed->getWindowHandle(), sTarget, 10000)) {
       if (ed->isOnDesktop()) ed->removeFromDesktop();
       emitErr(errObj("ARGS", "session act: unknown node '" + sTarget +
                                  "' (snapshot lists ids)"));
