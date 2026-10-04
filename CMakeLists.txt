@@ -52,7 +52,8 @@ target_compile_definitions(plugprobe PRIVATE
     JUCE_PLUGINHOST_VST3=1
     JUCE_PLUGINHOST_LV2=1
     JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0)
+    JUCE_USE_CURL=0
+    PLUGPROBE_VERSION="${PROJECT_VERSION}")
 if(APPLE)
     target_compile_definitions(plugprobe PRIVATE JUCE_PLUGINHOST_AU=1)
     # console apps don't get JUCE's GUI-app framework links; AU hosting needs them
@@ -70,3 +71,12 @@ target_link_libraries(plugprobe PRIVATE
 
 include(GNUInstallDirs)
 install(TARGETS plugprobe RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(FILES man/plugprobe.1 DESTINATION "${CMAKE_INSTALL_MANDIR}/man1")
+install(FILES completions/plugprobe.bash
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/bash-completion/completions"
+        RENAME plugprobe)
+install(FILES completions/plugprobe.zsh
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/zsh/site-functions"
+        RENAME _plugprobe)
+install(FILES completions/plugprobe.fish
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/fish/vendor_completions.d")

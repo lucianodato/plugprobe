@@ -40,6 +40,31 @@ def run(cmd, args, env=None):
 
 
 class Contract(unittest.TestCase):
+    def test_help_version(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        for flag in ("--help", "--version"):
+            r = subprocess.run([BIN, flag], capture_output=True, text=True,
+                               timeout=30)
+            self.assertEqual(r.returncode, 0)
+            self.assertTrue(r.stdout.strip())
+        self.assertIn("plugprobe", subprocess.run(
+            [BIN, "--version"], capture_output=True, text=True,
+            timeout=30).stdout)
+
+    def test_json_inline_and_stdin(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        d = tempfile.mkdtemp()
+        inline = subprocess.run(
+            [BIN, "scan", "--json", json.dumps({"paths": [d]})],
+            capture_output=True, text=True, timeout=60)
+        self.assertTrue(json.loads(inline.stdout.strip().splitlines()[-1])["ok"])
+        piped = subprocess.run(
+            [BIN, "scan", "--json", "-"], input=json.dumps({"paths": [d]}),
+            capture_output=True, text=True, timeout=60)
+        self.assertTrue(json.loads(piped.stdout.strip().splitlines()[-1])["ok"])
+
     def test_unknown_cmd_shape(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")

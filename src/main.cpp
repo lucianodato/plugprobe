@@ -5,8 +5,46 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <iostream>
 
 using namespace pp;
+
+#ifndef PLUGPROBE_VERSION
+#define PLUGPROBE_VERSION "0.0.0-unknown"
+#endif
+
+// No-plugin paths: answer directly, never via the crash-isolation child.
+static bool isHelp(int argc, char** argv) {
+  if (argc < 2) return false;
+  juce::String a(argv[1]);
+  return a == "--help" || a == "-h" || a == "help";
+}
+static bool isVersion(int argc, char** argv) {
+  if (argc < 2) return false;
+  juce::String a(argv[1]);
+  return a == "--version" || a == "-v" || a == "version";
+}
+static void printHelp() {
+  std::printf(
+      "plugprobe %s — agent-driven CLI for hosting audio plugins\n"
+      "usage: plugprobe <cmd> --json <args.json|json-string|->\n"
+      "  --json - reads args from stdin (heredoc-friendly)\n"
+      "commands:\n"
+      "  scan           find plugins (standard paths by default)\n"
+      "  inspect        automatable params + editor size\n"
+      "  render         offline render (params/timeline/midi/video)\n"
+      "  compare        A/B two audio files\n"
+      "  snapshot       UI node ids for act targeting\n"
+      "  act            detached click/drag/type/slider-set probe\n"
+      "  session start|act|stop  agent-paced takes (events replayed at stop)\n"
+      "  meters         loudness/spectrum of a session loop or file\n"
+      "  manual         locate bundled plugin docs (agent reads them)\n"
+      "errors are JSON {ok:false,error:{code,message}}; codes: ARGS NOT_FOUND "
+      "NO_OS_DRIVER CRASH AX_UNTRUSTED RENDER IO\n"
+      "see README.md / SKILL.md for the agent workflow\n",
+      PLUGPROBE_VERSION);
+  std::fflush(stdout);
+}
 
 // Crash isolation: foreign plugin binaries can segfault/abort at load,
 // process, or teardown (exit-time timer races are documented in core.cpp).
@@ -63,6 +101,14 @@ static int runIsolated(int argc, char** argv) {
 
 int main(int argc, char** argv) {
   juce::ScopedJuceInitialiser_GUI juce;
+  if (isHelp(argc, argv)) {
+    printHelp();
+    return 0;
+  }
+  if (isVersion(argc, argv)) {
+    std::printf("plugprobe %s\n", PLUGPROBE_VERSION);
+    return 0;
+  }
   if (juce::SystemStats::getEnvironmentVariable("PLUGPROBE_CHILD", "0") ==
       "0") {
     int rc = runIsolated(argc, argv);
@@ -87,9 +133,22 @@ int main(int argc, char** argv) {
     if (juce::String(argv[i]) == "--json") jsonPath = argv[i + 1];
   juce::var args;
   if (jsonPath.isNotEmpty()) {
-    juce::File f(jsonPath);
+    juce::String txt;
+    if (jsonPath == "-") {
+      // Heredoc/pipe: printf ... | plugprobe render --json -
+      while (!std::cin.eof()) {
+        char buf[4096];
+        std::cin.read(buf, sizeof(buf));
+        txt += juce::String(buf, (size_t)std::cin.gcount());
+      }
+    } else {
+      // Bare JSON on the command line saves humans a temp file; a real path
+      // still wins when it exists.
+      juce::File f(jsonPath);
+      txt = f.existsAsFile() ? f.loadFileAsString() : jsonPath;
+    }
     juce::var parsed;
-    if (!juce::JSON::parse(f.loadFileAsString(), parsed) || !parsed.isObject()) {
+    if (!juce::JSON::parse(txt, parsed) || !parsed.isObject()) {
       emitErr(errObj("JSON", "cannot parse --json file"));
       return 1;
     }

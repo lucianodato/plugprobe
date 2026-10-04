@@ -1,0 +1,57 @@
+.TH PLUGPROBE 1 "2026" "plugprobe" "User Commands"
+.SH NAME
+plugprobe \- agent-driven CLI for hosting audio plugins
+.SH SYNOPSIS
+.B plugprobe
+.I CMD --json ARGS.json
+.br
+.B plugprobe
+.I CMD --json '{"key":...}'
+.br
+.B printf ... |
+.B plugprobe
+.I CMD --json -
+.br
+.B plugprobe --help
+|
+.B --version
+.SH COMMANDS
+.TP
+.B scan
+Find plugins (standard paths by default).
+.TP
+.B inspect
+Automatable params + editor size.
+.TP
+.B render
+Offline render (params/timeline/midi/video).
+.TP
+.B compare
+A/B two audio files.
+.TP
+.B snapshot
+UI node ids for act targeting.
+.TP
+.B act
+Detached click/drag/type/slider-set probe.
+.TP
+.B session start|act|stop
+Agent-paced takes (events replayed at stop).
+.TP
+.B meters
+Loudness/spectrum of a session loop or file.
+.TP
+.B manual
+Locate bundled plugin docs (agent reads them).
+.SH "ENVIRONMENT"
+.TP
+.B PLUGPROBE_BIN
+Path to the binary (contract tests, scripts).
+.TP
+.B PLUGPROBE_SCAN_CACHE
+Directory for the plugin scan cache.
+.SH "EXIT STATUS"
+0 on {"ok":true}; nonzero with {"ok":false,error:{code,message}} on stdout.
+Codes: ARGS NOT_FOUND NO_OS_DRIVER CRASH AX_UNTRUSTED RENDER IO.
+.SH "SEE ALSO"
+README.md and SKILL.md in the project repo (agent workflow).

@@ -13,10 +13,18 @@ compiled stubs that fail loud (`NO_OS_DRIVER`).
 
 Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
 
+## Install
+
+Prebuilt (no compiler): `curl -fsSL https://raw.githubusercontent.com/lucianodato/plugprobe/main/install.sh | sh`
+installs the latest tagged release to `~/.local/bin` (macOS universal, Linux x86_64, Windows x64).
+From source: `cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j4 && cmake --install build`
+(man page + shell completions included). Then `plugprobe --help` / `plugprobe --version`.
+
 ## Commands
 
 All commands: `plugprobe <cmd> --json <args.json>` →
-`{ok, data|error}` on stdout, exit code 0/1.
+`{ok, data|error}` on stdout, exit code 0/1. `--json` also takes inline
+JSON (`--json '{"plugin":"…"}'`) or `-` for stdin.
 
 | cmd | args → result |
 |---|---|
