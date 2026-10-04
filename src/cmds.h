@@ -15,4 +15,5 @@ int runSessionStart(const juce::var& args);
 int runSessionAct(const juce::var& args);
 int runSessionStop(const juce::var& args);
 int runMeters(const juce::var& args);
+int runManual(const juce::var& args);
 }  // namespace pp

@@ -114,6 +114,24 @@ class Contract(unittest.TestCase):
         self.assertTrue(r["ok"])
         self.assertEqual(r["data"]["videoSkipped"], "bypass-no-instance")
 
+    def test_manual_locates_docs(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        pdf = os.path.join(tmp, "UserManual.pdf")
+        open(pdf, "wb").write(b"%PDF-1.4 fake")
+        open(os.path.join(tmp, "noise.wav"), "wb").write(b"RIFF")
+        r, _ = run("manual", {"path": pdf})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["data"]["manuals"][0]["name"], "UserManual.pdf")
+        r, _ = run("manual", {"path": tmp})
+        self.assertTrue(r["ok"])
+        self.assertEqual(len(r["data"]["manuals"]), 1)  # wav ignored
+        r, _ = run("manual", {"path": os.path.join(tmp, "nope.pdf")})
+        self.assertEqual(r["error"]["code"], "ARGS")
+        r, _ = run("manual", {"plugin": "no-such-plugin-xyz-123"})
+        self.assertEqual(r["error"]["code"], "NOT_FOUND")
+
     def test_stubs_fail_loudly(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")

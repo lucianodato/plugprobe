@@ -47,6 +47,7 @@ int main(int argc, char** argv) {
   if (cmd == "session-act") return runSessionAct(args);
   if (cmd == "session-stop") return runSessionStop(args);
   if (cmd == "meters") return runMeters(args);
+  if (cmd == "manual") return runManual(args);
 
   emitErr(errObj("CMD", "unknown command: " + cmd));
   return 1;

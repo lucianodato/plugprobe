@@ -24,6 +24,7 @@ All commands: `plugprobe <cmd> --json <args.json>` →
 | `compare` | `{a, b, slices?}` → `{nullDb,lufsDiff,spectralDist,sdrDb,artifactDb,costDelta}` |
 | `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?,dir?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?,at_ms?}` → `{atMs,paramDelta?,meters}`; `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
 | `meters` | `{session,window_ms?}` → `{peakDb,rmsDb,lufsM,crestDb,spectrum[16]}` (lufsM is an RMS proxy, same convention as `compare`) |
+| `manual` | `{plugin,paths?}` or `{path}` → `manuals:[{path,name,bytes}]` (bundled docs for the agent to read itself before clicking; empty + `note` when the vendor ships none) |
 
 Screenshots only on request (`shot`/`shotAfter`); blank (Metal/async)
 captures are reported, never written. `visible:true` opens a real
