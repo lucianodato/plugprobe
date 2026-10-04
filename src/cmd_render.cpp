@@ -73,6 +73,117 @@ int runRender(const juce::var& args)
         return 1;
       }
     }
+    // MIDI input (instruments): inline notes and/or a .mid file, parsed and
+    // validated before plugin lookup so bad events are ARGS anywhere.
+    // Bypass parses but ignores (no instance to feed). Inline notes past the
+    // render length are ARGS (explicit intent, likely a bug); file events
+    // past the end are dropped (bulk data).
+    struct MidiEv {
+      int frame = 0;
+      juce::MidiMessage msg;
+    };
+    std::vector<MidiEv> midiEvs;
+    {
+      int tailN0 = (int)(jnum(args, "tail_ms", 500.0) / 1000.0 * fileSr);
+      int totalFr = (int)ch[0].size() + tailN0;
+      auto pushAt = [&](double atMs, juce::MidiMessage msg) {
+        midiEvs.push_back({(int)(atMs / 1000.0 * fileSr), msg});
+      };
+      if (auto* ma = args["midi"].getArray()) {
+        for (auto& e : *ma) {
+          double atMs = (double)e["atMs"];
+          int note = (int)e["note"], vel = e.hasProperty("vel") ? (int)e["vel"] : 100;
+          double durMs = e.hasProperty("durMs") ? (double)e["durMs"] : 500.0;
+          int chn = e.hasProperty("ch") ? (int)e["ch"] : 1;
+          if (atMs < 0 || note < 0 || note > 127 || vel < 1 || vel > 127 ||
+              durMs <= 0 || chn < 1 || chn > 16) {
+            emitErr(errObj("ARGS", "render: midi needs {atMs>=0, note:0..127, "
+                                       "vel:1..127, durMs>0, ch:1..16}"));
+            return 1;
+          }
+          int onFr = (int)(atMs / 1000.0 * fileSr);
+          if (onFr >= totalFr) {
+            emitErr(errObj("ARGS", "render: midi note at " +
+                                       juce::String(atMs, 1) +
+                                       "ms is past the render length"));
+            return 1;
+          }
+          pushAt(atMs, juce::MidiMessage::noteOn(chn, note, (juce::uint8)vel));
+          double offMs = atMs + durMs;
+          if ((int)(offMs / 1000.0 * fileSr) <= onFr) offMs = atMs + 1;
+          pushAt(offMs, juce::MidiMessage::noteOff(chn, note));
+        }
+      } else if (args.hasProperty("midi")) {
+        emitErr(errObj("ARGS", "render: midi needs an array of "
+                                   "{atMs,note,vel?,durMs?,ch?}"));
+        return 1;
+      }
+      juce::String mfP = jstr(args, "midi_file");
+      if (mfP.isNotEmpty()) {
+        juce::File mf(mfP);
+        if (!mf.existsAsFile()) {
+          emitErr(errObj("ARGS", "render: midi file not found: " +
+                                     mf.getFullPathName()));
+          return 1;
+        }
+        juce::FileInputStream fis(mf);
+        juce::MidiFile mid;
+        if (!mid.readFrom(fis)) {
+          emitErr(errObj("ARGS", "render: not a MIDI file: " +
+                                     mf.getFullPathName()));
+          return 1;
+        }
+        int tf = mid.getTimeFormat();
+        if (tf <= 0) {
+          emitErr(errObj("ARGS", "render: SMPTE-timed MIDI unsupported"));
+          return 1;
+        }
+        // Tempo map (default 120bpm) then tick->second walk per event.
+        std::vector<std::pair<int, double>> tempo{{0, 0.5}};
+        std::vector<std::pair<int, juce::MidiMessage>> ticked;
+        for (int t = 0; t < mid.getNumTracks(); ++t) {
+          auto* sq = mid.getTrack(t);
+          for (int i = 0; i < sq->getNumEvents(); ++i) {
+            auto& me = sq->getEventPointer(i)->message;
+            int tick = (int)me.getTimeStamp();
+            if (me.isTempoMetaEvent() && tick >= 0)
+              tempo.push_back({tick, me.getTempoSecondsPerQuarterNote()});
+            else if (tick >= 0)
+              ticked.push_back({tick, me});
+          }
+        }
+        std::sort(tempo.begin(), tempo.end());
+        std::sort(ticked.begin(), ticked.end(),
+                  [](auto& a, auto& b) { return a.first < b.first; });
+        size_t ti = 0;
+        double sec = 0;
+        int lastTick = 0;
+        for (auto& [tick, me] : ticked) {
+          while (ti + 1 < tempo.size() && tempo[ti + 1].first <= tick) {
+            ++ti;
+            sec += (tempo[ti].first - lastTick) / (double)tf * tempo[ti - 1].second;
+            lastTick = tempo[ti].first;
+          }
+          double atSec = sec + (tick - lastTick) / (double)tf * tempo[ti].second;
+          int fr = (int)(atSec * fileSr);
+          if (fr >= 0 && fr < totalFr) midiEvs.push_back({fr, me});
+        }
+      }
+      std::sort(midiEvs.begin(), midiEvs.end(),
+                [](auto& a, auto& b) { return a.frame < b.frame; });
+    }
+    // Shared drain index: the main pass then the tail flush consume frames
+    // in order, so one cursor covers both (note-offs land in the tail).
+    size_t midiIdx = 0;
+    auto fillMidi = [&](juce::MidiBuffer& mb, size_t baseFr, int m) {
+      mb.clear();
+      while (midiIdx < midiEvs.size() &&
+             midiEvs[midiIdx].frame < (int)(baseFr + (size_t)m)) {
+        int off = midiEvs[midiIdx].frame - (int)baseFr;
+        if (off >= 0) mb.addEvent(midiEvs[midiIdx].msg, off);
+        ++midiIdx;
+      }
+    };
     if (!bypass) {
       juce::PluginDescription d;
       if (!findPlugin(jstr(args, "plugin"), argPaths(args), d)) {
@@ -392,7 +503,7 @@ int runRender(const juce::var& args)
           const auto& src = ch[(size_t)c % ch.size()];
           for (int i = 0; i < m; ++i) w[i] = src[pos + (size_t)i];
         }
-        midi.clear();
+        fillMidi(midi, pos, m);
         inst->processBlock(blk, midi);
         for (int c = 0; c < nCh; ++c) {
           const float* r = blk.getReadPointer(c % blk.getNumChannels());
@@ -409,7 +520,7 @@ int runRender(const juce::var& args)
         for (int pos = 0; pos < tailN; pos += block) {
           int m = std::min(block, tailN - pos);
           blk.clear();
-          midi.clear();
+          fillMidi(midi, base + (size_t)pos, m);
           inst->processBlock(blk, midi);
           for (int c = 0; c < nCh; ++c) {
             const float* r = blk.getReadPointer(c % blk.getNumChannels());
@@ -483,6 +594,7 @@ int runRender(const juce::var& args)
     if (hasEntryClick) o->setProperty("clicks", juce::var(clicksArr));
     o->setProperty("peakDb", peakDbOf(out));
     o->setProperty("hash", hashHex(out));
+    if (!midiEvs.empty()) o->setProperty("midiEvents", (double)midiEvs.size());
     if (!bypass) setBundleProps(o, renderDesc);
     if (jstr(args, "shot").isNotEmpty()) {
       if (shotSaved.isNotEmpty())

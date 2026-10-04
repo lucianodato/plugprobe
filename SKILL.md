@@ -29,7 +29,9 @@ Agent-driven audio plugin host. CLI-only: every command is
    Node-id press works headless; raw `{x,y}` clicks, drag, type need
    `"visible":true` + macOS Accessibility grant for the binary.
 4. **Render**: `render --json {plugin,in,out,...}` → `{out,hash,peakDb}`.
-   Presets via `params_json` (explicit `params` win). Every command runs
+   Presets via `params_json` (explicit `params` win); instruments via
+   `midi:[{atMs,note,...}]` or tempo-mapped `midi_file` (silent `in` +
+   notes is the synth smoke pattern). Every command runs
    crash-isolated: a dying plugin yields `CRASH`, never a dead pipe.
    `timeline:[{atMs,params?,click?}]` replays learn-freeze on one instance.
    Opt-in captures: `shot:path.png`, `video:out.mp4` (macOS, take muxed in).

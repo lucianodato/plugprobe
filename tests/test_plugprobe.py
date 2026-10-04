@@ -190,6 +190,55 @@ class Contract(unittest.TestCase):
         self.assertEqual(r["error"]["code"], "NOT_FOUND")
         self.assertTrue(os.path.exists(c2))
 
+    def test_midi_validation(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        o = os.path.join(tmp, "o.wav")
+        base = {"plugin": "none", "in": src, "out": o,
+                "bypass": True, "tail_ms": 0}
+        good = {"atMs": 100, "note": 69}
+        for bad in ({"atMs": -1, "note": 69}, {"atMs": 0, "note": 128},
+                    {"atMs": 0, "note": 60, "vel": 0},
+                    {"atMs": 0, "note": 60, "ch": 17},
+                    {"atMs": 0, "note": 60, "durMs": 0},
+                    {"atMs": 5000, "note": 60}):  # past 1s render
+            r, _ = run("render", dict(base, midi=[bad]))
+            self.assertEqual(r["error"]["code"], "ARGS", bad)
+        r, _ = run("render", dict(base, midi={"atMs": 0, "note": 60}))
+        self.assertEqual(r["error"]["code"], "ARGS")  # needs array
+        r, _ = run("render", dict(base, midi_file=os.path.join(tmp, "no.mid")))
+        self.assertEqual(r["error"]["code"], "ARGS")
+        badf = os.path.join(tmp, "bad.mid")
+        open(badf, "wb").write(b"not a midi file")
+        r, _ = run("render", dict(base, midi_file=badf))
+        self.assertEqual(r["error"]["code"], "ARGS")
+        r, _ = run("render", dict(base, midi=[good]))
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["data"]["midiEvents"], 2.0)  # on + off
+
+    def test_midi_file(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        # minimal type-0 .mid: prog change, C4 on, C4 off 72 ticks later
+        trk = bytes.fromhex("00c000") + bytes.fromhex("00903c64") + \
+            bytes.fromhex("48803c40")
+        mid = b"MThd" + struct.pack(">IHHH", 6, 0, 1, 480) + \
+            b"MTrk" + struct.pack(">I", len(trk)) + trk
+        mf = os.path.join(tmp, "n.mid")
+        open(mf, "wb").write(mid)
+        a = {"plugin": "none", "in": src, "out": os.path.join(tmp, "o.wav"),
+             "bypass": True, "tail_ms": 0, "midi_file": mf}
+        r1, _ = run("render", a)
+        self.assertTrue(r1["ok"])
+        self.assertEqual(r1["data"]["midiEvents"], 3.0)
+        a["out"] = os.path.join(tmp, "o2.wav")
+        r2, _ = run("render", a)
+        self.assertEqual(r1["data"]["hash"], r2["data"]["hash"])
+
     def test_stubs_fail_loudly(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")
