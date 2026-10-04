@@ -11,4 +11,8 @@ int runRender(const juce::var& args);
 int runCompare(const juce::var& args);
 int runSnapshot(const juce::var& args);
 int runAct(const juce::var& args);
+int runSessionStart(const juce::var& args);
+int runSessionAct(const juce::var& args);
+int runSessionStop(const juce::var& args);
+int runMeters(const juce::var& args);
 }  // namespace pp

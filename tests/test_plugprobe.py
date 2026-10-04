@@ -79,6 +79,29 @@ class Contract(unittest.TestCase):
         self.assertTrue(c["ok"])
         self.assertLess(c["data"]["nullDb"], -60.0)
 
+    def test_session_lifecycle(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        take = os.path.join(tmp, "take.wav")
+        s, _ = run("session-start", {"loop": src, "out": take,
+                                     "bypass": True})
+        self.assertTrue(s["ok"])
+        ses = s["data"]["session"]
+        m, _ = run("meters", {"session": ses, "window_ms": 500})
+        self.assertTrue(m["ok"])
+        for k in ("peakDb", "rmsDb", "lufsM", "crestDb", "spectrum"):
+            self.assertIn(k, m["data"])
+        a, _ = run("session-act", {"session": ses, "params": {"0": 0.5}})
+        self.assertEqual(a["error"]["code"], "ARGS")  # bypass: no params
+        st, _ = run("session-stop", {"session": ses})
+        self.assertTrue(st["ok"])
+        self.assertEqual(st["data"]["eventLog"], [])
+        self.assertTrue(os.path.exists(take))
+        c, _ = run("compare", {"a": src, "b": take})
+        self.assertLess(c["data"]["nullDb"], -60.0)  # passthrough take
+
     def test_stubs_fail_loudly(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")
@@ -92,8 +115,10 @@ class Contract(unittest.TestCase):
         out, _ = run("act", {"plugin": "no-such-plugin-xyz-123", "via": "os",
                              "action": {"target": {"a": 1}}})
         self.assertEqual(out["error"]["code"], "ARGS")  # object needs {x,y}
-        out2, _ = run("session-start", {})
-        self.assertEqual(out2["error"]["code"], "UNIMPLEMENTED_M2")
+        out, _ = run("session-start", {"loop": "nope.wav"})
+        self.assertEqual(out["error"]["code"], "ARGS")  # needs loop+out
+        out, _ = run("session-stop", {"session": "/no-such-session"})
+        self.assertEqual(out["error"]["code"], "ARGS")
         s, _ = run("snapshot", {"plugin": "no-such-plugin-xyz-123",
                                 "limit": 10, "offset": 0})
         self.assertFalse(s["ok"])

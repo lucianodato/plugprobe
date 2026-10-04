@@ -43,21 +43,10 @@ int main(int argc, char** argv) {
   if (cmd == "compare") return runCompare(args);
   if (cmd == "snapshot") return runSnapshot(args);
   if (cmd == "act") return runAct(args);
-
-  if (cmd == "session-start" || cmd == "session-act" ||
-      cmd == "session-stop" || cmd == "meters") {
-    emitErr(errObj("UNIMPLEMENTED_M2",
-                   cmd + ": no live session in M0+M3 (cannot host an editor "
-                         "on a rendering instance with audio running). "
-                         "Interim click path: render timeline automating "
-                         "a toggle on one instance, e.g. timeline "
-                         "[{atMs:0,params:{6:1}},{atMs:8000,params:{6:0}}] "
-                         "for an automatable switch, or timeline clicks "
-                         "[{atMs:0,click:'<node-id>'}] for native "
-                         "buttons no param can reach (snapshot lists ids); "
-                         "verify the UI with shot"));
-    return 1;
-  }
+  if (cmd == "session-start") return runSessionStart(args);
+  if (cmd == "session-act") return runSessionAct(args);
+  if (cmd == "session-stop") return runSessionStop(args);
+  if (cmd == "meters") return runMeters(args);
 
   emitErr(errObj("CMD", "unknown command: " + cmd));
   return 1;

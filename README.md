@@ -22,10 +22,8 @@ All commands: `plugprobe <cmd> --json <args.json>` →
 | `act` | `{plugin, via:"os"\|"juce", action\|actions, shotAfter?, visible?, holdMs?}` → detached probe click/drag/type. Node-id press works headless via AX; raw `{x,y}` clicks, drag, type need `visible:true` + the macOS Accessibility grant for the current binary (ad-hoc rebuilds invalidate it) |
 | `render` | `{plugin, in, out, sr?, block?, params?, bypass?, timeline?, shot?, visible?, holdMs?}` → offline render. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click) |
 | `compare` | `{a, b, slices?}` → `{nullDb,lufsDiff,spectralDist,sdrDb,artifactDb,costDelta}` |
-
-`session start|act|stop` and `meters` are not implemented (`UNIMPLEMENTED_M2`);
-they fail loud instead of pretending. The scripted equivalent is one
-`render` call with a `timeline`.
+| `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?,at_ms?}` → `{atMs,paramDelta?,meters}`; `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
+| `meters` | `{session,window_ms?}` → `{peakDb,rmsDb,lufsM,crestDb,spectrum[16]}` (lufsM is an RMS proxy, same convention as `compare`) |
 
 Screenshots only on request (`shot`/`shotAfter`); blank (Metal/async)
 captures are reported, never written. `visible:true` opens a real
@@ -80,7 +78,11 @@ writes a per-file compare CSV against a reference plugin.
 ## Layout
 
 ```
-src/main.cpp            arg parsing, dispatch, session stubs
+src/main.cpp            arg parsing, dispatch (incl. session/meters)
+src/core.cpp / core.h   emit, JSON args, hosting, params, WAV, metrics
+src/gui.cpp / gui.h     live-editor open/hold/capture/hit-test
+src/session.cpp / session.h  M2 session files, offline loop render, meters
+src/cmd_session.cpp     session start|act|stop + meters
 src/core.cpp / core.h   emit, JSON args, hosting, params, WAV, metrics
 src/gui.cpp / gui.h     live-editor open/hold/capture/hit-test
 src/cmd_scan.cpp        scan installed plugins
