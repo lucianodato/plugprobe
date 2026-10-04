@@ -117,7 +117,6 @@ src/plugprobe_os_mac.mm macOS AX/CGEvent driver + NSView capture
 src/plugprobe_os_win.cpp / plugprobe_os_linux.cpp  stub backends (fail loud)
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
-SPEC.md                full spec (CLI contract in §3)
 ```
 
 ## License

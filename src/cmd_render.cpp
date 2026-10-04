@@ -263,7 +263,7 @@ int runRender(const juce::var& args)
               kc->setProperty("x", evs[ei].clickX);
               kc->setProperty("y", evs[ei].clickY);
               kc->setProperty("pressed", true);
-              kc->setProperty("fragile", true);  // SPEC §5: raw coords
+              kc->setProperty("fragile", true);  // raw coords: re-ground on replay
               if (juce::var hit =
                       hitNodeAt(visEd->getWindowHandle(), evs[ei].clickX,
                                 evs[ei].clickY);

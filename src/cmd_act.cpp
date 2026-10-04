@@ -36,7 +36,8 @@ int runAct(const juce::var& args)
       // labeled detached, like the juce probe. Real effect only happens for
       // timeline clicks inside a render, on the rendering instance.
       // Shape validation first (no instance needed): malformed steps fail
-      // without touching any plugin. Targets are node ids (SPEC §5 priority)
+      // without touching any plugin. Targets are node ids (nodeId → name
+      // → role+index → raw x,y, least to most fragile)
       // or raw screen coords {x,y} for AX-empty custom-painted editors.
       auto coordOf = [&](const juce::var& s, double* x,
                          double* y) -> bool {
@@ -146,7 +147,7 @@ int runAct(const juce::var& args)
                                    juce::String(qy, 1) + ")")
                     : s["target"].toString();  // validated above
         juce::String op = s.hasProperty("op") ? s["op"].toString() : "press";
-        if (isCoord) r->setProperty("fragile", true);  // SPEC §5: raw coords
+        if (isCoord) r->setProperty("fragile", true);  // raw coords: re-ground on replay
         if (op == "press" || op == "click") {
           if (isCoord) {
             if (!hidGates("press")) return false;

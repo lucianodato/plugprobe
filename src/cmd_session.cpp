@@ -290,7 +290,7 @@ int runSessionAct(const juce::var& args) {
     if (clickId.isNotEmpty()) o->setProperty("node", clickId);
   }
   o->setProperty("meters",
-                 juce::var(m));  // compact ears, SPEC §4 deltas-not-dumps
+                 juce::var(m));  // compact deltas, never full state
   (void)loopSr;
   emitOk(juce::var(o));
   return 0;
@@ -349,7 +349,7 @@ int runSessionStop(const juce::var& args) {
   juce::String outP =
       args.hasProperty("out") ? args["out"].toString() : s["out"].toString();
   // Timeline replay of every act, in order: one render call is the scripted
-  // open → tweak → capture session equivalent (SPEC §7 live flow).
+  // open → tweak → capture session equivalent.
   juce::Array<juce::var> tl;
   juce::Array<juce::var> log;
   for (auto& e : *s["events"].getArray()) {
