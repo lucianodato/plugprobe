@@ -1,5 +1,7 @@
 # plugprobe
 
+[![Build plugprobe](https://github.com/lucianodato/plugprobe/actions/workflows/build.yml/badge.svg)](https://github.com/lucianodato/plugprobe/actions/workflows/build.yml)
+
 Agent-driven audio plugin host: load any installed plugin (VST3/AU/LV2),
 drive it like an end user through real OS mouse/keyboard, render audio
 offline, diff the results. No DAW.
