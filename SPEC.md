@@ -256,8 +256,4 @@ No REAPER.
 - Live-session monitor routing (null sink vs real device mirror)?
   Default file-only + optional device mirror.
 - Windows/Linux backends: designed in (trait), built after M1 proves macOS.
-- License: DECIDED — own code MIT (see `LICENSE`). Caveat: binaries linking
-  JUCE / VST3 SDK distribute under those GPL terms (MIT is GPL-compatible, so
-  source stays MIT but the built `plugprobe` binary inherits GPL obligations —
-  same situation as Pedalboard/DAWdreamer shipping GPL). A strict MIT
-  end-to-end binary would force dropping JUCE/VST3 for AU+CLAP+LV2 only.
+- License: DECIDED — GPL-3.0-or-later (see `LICENSE`), matching the JUCE / VST3 linking terms.

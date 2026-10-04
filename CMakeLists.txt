@@ -1,4 +1,4 @@
-# MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+# GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 cmake_minimum_required(VERSION 3.22)
 project(plugprobe VERSION 0.1.0 LANGUAGES C CXX)
 

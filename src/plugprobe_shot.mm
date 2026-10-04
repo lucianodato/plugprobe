@@ -1,4 +1,4 @@
-// MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+// GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // plugprobe_shot.mm: macOS-only offscreen NSView capture for opt-in `shot` PNGs.
 // JUCE's createComponentSnapshot skips native (heavyweight) plugin views, so
 // ask the NSView to render itself into a bitmap rep: no window needed.

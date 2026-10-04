@@ -74,6 +74,5 @@ SPEC.md                full spec (v0.2, pre-rename; CLI contract in §3)
 
 ## License
 
-Own code MIT (see `LICENSE`). Binaries linking JUCE / VST3 SDK
-distribute under those GPL terms — source stays MIT, the built binary
-inherits GPL obligations.
+GPL-3.0-or-later (see `LICENSE`). GPL fits: plugprobe links JUCE and
+hosts VST3 plugins, so the distributed binary is GPL either way.

@@ -1,4 +1,4 @@
-// MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+// GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // plugprobe_os.mm: macOS-only OS driver (M1). The plugin window lives in THIS
 // process (we host the editor), so its AX tree is ours to walk and its
 // controls ours to press — no cross-app trust needed. Native frameworks only.

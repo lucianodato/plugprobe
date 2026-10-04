@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+# GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 """matrix.py: scripted A/B over shared fixtures. render each input through
 each --plugin, compare vs ref (or input for null sanity), write matrix.csv.
 Usage: matrix.py --plugin <id|path> [--ref <id|path|none>] --inputs <dir>

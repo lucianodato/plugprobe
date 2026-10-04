@@ -1,4 +1,4 @@
-// MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+// GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // plugprobe: single JUCE/C++ CLI per SPEC.md §3. `plugprobe <cmd> --json <args.json>`
 // -> {ok,data|error} on stdout, exit 0/1. M0+M3 core: scan/inspect/render/
 // compare real; snapshot/act/session/meters spec-shaped stubs for M1/M2.

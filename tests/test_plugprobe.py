@@ -1,4 +1,4 @@
-# MIT License — Copyright (c) 2026 Luciano Dato — plugprobe
+# GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 """M0+M3 contract tests, stdlib only. Needs PLUGPROBE_BIN (else skips buildable tests)."""
 import json
 import math
