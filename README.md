@@ -4,8 +4,10 @@ Agent-driven audio plugin host: load any installed plugin (VST3/AU/LV2),
 drive it like an end user through real OS mouse/keyboard, render audio
 offline, diff the results. No DAW.
 
-Single JUCE/C++ CLI, macOS-native, no new dependencies. Headless by
+Single JUCE/C++ CLI, no new dependencies. Headless by
 default (byte-identical renders); UI/visible/screenshot paths are opt-in.
+OS driver + capture are macOS-only today; Windows/Linux backends are
+compiled stubs that fail loud (`UNIMPLEMENTED_M1`).
 
 ## Commands
 

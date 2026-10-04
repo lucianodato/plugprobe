@@ -22,35 +22,7 @@
 #include <CoreFoundation/CoreFoundation.h>  // pumpMessages (JUCE pump API is
 #endif  // GUI-app-only; console hosts pump the runloop directly)
 
-#if JUCE_MAC
-// Defined in plugprobe_shot.mm (global linkage). Returns 1 ok / 0 fail / -1 blank.
-int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h);
-// Window-list fallback for custom-painted (Metal/async) editors whose NSView
-// grab comes out blank: captures the composited window when on-screen.
-int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h);
-bool plugprobeShowFront(void* nsView);
-#endif
-#if JUCE_MAC
-// Defined in plugprobe_os.mm (global linkage). AX tree of our hosted window;
-// press returns 1 pressed / 0 unknown id / -1 press failed.
-struct PlugprobeAxNode {  std::string id, role, name;
-  bool enabled;
-  std::string value;
-  double x, y, w, h;
-};
-std::vector<PlugprobeAxNode> plugprobeAxDump(void* nsView);
-int plugprobeAxPressById(const char* nodeId, void* nsView, double* cx, double* cy);
-// Raw screen-coordinate click (AX space == mouse space, top-left) for AX-empty
-// custom-painted editors: grounded by a visible screenshot, flagged fragile.
-bool plugprobeAxClickAt(double x, double y);
-void plugprobeFocusWindow(void* nsView);
-bool plugprobeAxDragAt(double x, double y, double dx, double dy);
-bool plugprobeAxTypeText(const char* text);
-void plugprobePumpApp(double seconds);
-// Accessibility trust: ad-hoc signatures change hash every rebuild, which
-// invalidates the grant — HID drag/type must check this at runtime.
-extern "C" bool AXIsProcessTrusted(void);
-#endif
+#include "plugprobe_os.h"  // OS layer: front/capture/tree/input backends
 
 namespace {
 constexpr double kDefSr = 48000.0;
