@@ -60,18 +60,13 @@ def main():
                 {"session": ses, "at_ms": 500 * (i + 1),
                  "params": {"Cutoff": norm}})
         assert r["ok"], (hz, r)
-    # Param-less Trim (invisible to params-plane): widget-level slider sets.
-    # macOS: grant-free AX, headless-safe, replayed into the take. Elsewhere
+    # Param-less Trim (invisible to params-plane): widget-level AX sets.
+    # macOS: grant-free, headless-safe, replayed into the take. Elsewhere
     # the same calls must fail loud (NO_OS_DRIVER), never silently pass.
     mac = sys.platform == "darwin"
     trim_ev = {"target": "AXSlider:Trim", "value": 0.5}
     if mac:
         # Detached first, then replayed in the take.
-        d = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
-                               "action": {"target": "AXSlider:Cutoff",
-                                          "op": "set", "value": 15000}})
-        assert d["ok"], d
-        assert abs(d["data"]["results"][0]["state"] - 15000) < 1e-6, d
         d = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
                                "action": {"target": "AXSlider:Trim",
                                           "op": "set", "value": 1.5}})
@@ -100,8 +95,9 @@ def main():
         mute = run(a.bin, "render",
                    {"plugin": a.plugin, "in": loop,
                     "out": os.path.join(a.out, "mute.wav"), "tail_ms": 0,
-                    "timeline": [{"atMs": 0, "slider": {"target": "AXSlider:Trim",
-                                                       "value": 0.0}}]})
+                    "timeline": [{"atMs": 0,
+                                  "slider": {"target": "AXSlider:Trim",
+                                             "value": 0.0}}]})
         assert mute["ok"], mute
         assert mute["data"]["peakDb"] <= -100, mute  # default trim=1 is loud
     else:

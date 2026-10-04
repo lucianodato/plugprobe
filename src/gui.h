@@ -22,4 +22,8 @@ juce::String saveEditorShot(const juce::PluginDescription& desc, double sr,
                             juce::String& shotWhy, juce::String& visWhy,
                             bool visible, int holdMs);
 juce::var hitNodeAt(void* hv, double x, double y);
+#if JUCE_MAC
+// Poll the AX tree until a node id appears (or timeout); see gui.cpp.
+bool axWaitForId(void* hv, const juce::String& nodeId, int timeoutMs);
+#endif
 }  // namespace pp

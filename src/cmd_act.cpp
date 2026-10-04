@@ -61,7 +61,7 @@ int runAct(const juce::var& args)
             s.hasProperty("target") ? s["target"].toString() : "";
         if (!isCoord && tgt.isEmpty()) {
           emitErr(errObj("ARGS", "os act: step needs {target:<node-id>|{x,y},"
-                                 "op:press|drag|type}; empty target is a "
+                                 "op:press|drag|type|set}; empty target is a "
                                  "no-op error (use snapshot to list ids, or "
                                  "raw {x,y} grounded by a visible screenshot)"));
           return false;
@@ -327,14 +327,16 @@ int runAct(const juce::var& args)
             r->setProperty("typed", text);
           }
         } else if (op == "set") {
-          double v = (double)s["value"];  // native control units, unclamped:
-          double actual = 0;              // the control clamps, state proves it
-          int rc = plugprobeAxSetValueById(tgt.toRawUTF8(), hv, v, &actual);
-          if (rc == 0) {
+          // Third-party views attach async: wait for the node (pumping)
+          // instead of racing it, then set grant-free.
+          if (!axWaitForId(hv, tgt, 2000)) {
             emitErr(errObj("ARGS", "os act: unknown node '" + tgt +
                                      "' (snapshot lists ids)"));
             return false;
           }
+          double v = (double)s["value"];  // native control units
+          double actual = 0;
+          int rc = plugprobeAxSetValueById(tgt.toRawUTF8(), hv, v, &actual);
           if (rc < 0) {
             emitErr(errObj("AX_SET", "os act: set failed on '" + tgt + "'"));
             return false;

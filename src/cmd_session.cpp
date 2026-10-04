@@ -262,8 +262,8 @@ int runSessionAct(const juce::var& args) {
     return 1;
   }
   if (hasSlider) {
-    // Widget-level set for param-less sliders: verified read-only here,
-    // effected once at stop replay (grant-free, headless-safe).
+    // Widget-level set for param-less sliders: verified read-only here
+    // (waiting for async attach), effected once at stop replay.
     auto sv = args["slider"]["value"];
     juce::String sTarget = jstr(args["slider"], "target");
     if (sTarget.isEmpty() || (!sv.isDouble() && !sv.isInt())) {
@@ -301,19 +301,13 @@ int runSessionAct(const juce::var& args) {
                      juce::String("session act slider needs an editor: ") + why));
       return 1;
     }
-    bool found = false;
-    for (auto& nn : plugprobeAxDump(ed->getWindowHandle()))
-      if (juce::String(nn.id) == sTarget) {
-        found = true;
-        if (!nn.value.empty()) ev->setProperty("nodeState", juce::String(nn.value));
-        break;
-      }
-    if (ed->isOnDesktop()) ed->removeFromDesktop();
-    if (!found) {
+    if (!axWaitForId(ed->getWindowHandle(), sTarget, 2000)) {
+      if (ed->isOnDesktop()) ed->removeFromDesktop();
       emitErr(errObj("ARGS", "session act: unknown node '" + sTarget +
                                  "' (snapshot lists ids)"));
       return 1;
     }
+    if (ed->isOnDesktop()) ed->removeFromDesktop();
     auto* se = new juce::DynamicObject();
     se->setProperty("target", sTarget);
     se->setProperty("value", (double)sv);

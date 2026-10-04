@@ -261,7 +261,6 @@ int plugprobeAxSetValueById(const char* nodeId, void* nsView, double value,
   releaseAll(found);
   return rc;
 }
-// Pump AppKit event delivery. A console tool never runs [NSApp run], so
 // CFRunLoop pumping alone leaves posted HID events stranded in our own
 // queue (monitors see nothing, controls never move). Drain manually.
 void plugprobePumpApp(double seconds) {

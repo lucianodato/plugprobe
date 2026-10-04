@@ -508,22 +508,27 @@ int runRender(const juce::var& args)
             pumpMessages();  // let the press dispatch before audio resumes
           }
           if (evs[ei].hasSlider) {
-            // Widget-level set on the live window (grant-free AX value, no
-            // HID): reaches sliders no param can touch, headless-safe.
+            // Grant-free widget set on the live window (no HID): reaches
+            // sliders no param can touch. Views attach async, so wait for
+            // the node instead of racing it.
             auto* ks = new juce::DynamicObject();
             ks->setProperty("atMs", evs[ei].atMs);
 #if JUCE_MAC
             double actual = 0;
-            int src = plugprobeAxSetValueById(
-                evs[ei].sliderTarget.toRawUTF8(), visEd->getWindowHandle(),
-                evs[ei].sliderValue, &actual);
-            if (src <= 0) {
-              emitErr(errObj(src == 0 ? "ARGS" : "AX_SET",
-                             juce::String("render: timeline slider ") +
-                                 (src == 0 ? "unknown node '"
-                                           : "set failed on '") +
-                                 evs[ei].sliderTarget +
-                                 "' (snapshot lists ids)"));
+            juce::String serr;
+            if (!axWaitForId(visEd->getWindowHandle(), evs[ei].sliderTarget,
+                             2000)) {
+              serr = "unknown node '" + evs[ei].sliderTarget +
+                     "' (snapshot lists ids)";
+            } else {
+              int src = plugprobeAxSetValueById(
+                  evs[ei].sliderTarget.toRawUTF8(), visEd->getWindowHandle(),
+                  evs[ei].sliderValue, &actual);
+              if (src < 0) serr = "set failed on '" + evs[ei].sliderTarget + "'";
+            }
+            if (serr.isNotEmpty()) {
+              emitErr(errObj("ARGS", juce::String("render: timeline slider ") +
+                                         serr));
               return 1;
             }
             auto* ksc = new juce::DynamicObject();

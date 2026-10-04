@@ -195,4 +195,23 @@ juce::var hitNodeAt(void* hv, double x, double y) {
   return juce::var(m);
 }
 #endif
+
+
+#if JUCE_MAC
+// Poll the AX tree until a node id appears (or timeout): third-party views
+// attach asynchronously after addToDesktop, so a single synchronous dump
+// races them — especially cold in CI. Pumps both runloops while waiting.
+bool axWaitForId(void* hv, const juce::String& nodeId, int timeoutMs) {
+  int waited = 0;
+  while (waited <= timeoutMs) {
+    for (auto& nn : plugprobeAxDump(hv))
+      if (juce::String(nn.id) == nodeId) return true;
+    pumpMessages();
+    plugprobePumpApp(0.05);
+    waited += 100;
+    pumpMessages();
+  }
+  return false;
+}
+#endif
 }  // namespace pp

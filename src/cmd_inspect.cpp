@@ -2,6 +2,7 @@
 // cmd_inspect.cpp: `inspect` command. See cmds.h.
 #include "cmds.h"
 #include "gui.h"
+#include "gui.h"
 
 #include <algorithm>
 #include <cmath>
