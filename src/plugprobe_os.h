@@ -2,7 +2,7 @@
 // plugprobe_os.h: OS-layer interface. Window fronting, editor capture, UI
 // tree dump and synthetic input — everything that touches native APIs.
 // One backend file per OS implements these 1:1:
-//   macOS: plugprobe_os.mm + plugprobe_shot.mm (real, AX/CGEvent/screencapture)
+//   macOS: plugprobe_os_mac.mm (real, AX/CGEvent/screencapture)
 //   Windows: plugprobe_os_win.cpp (stub: UI Automation + SendInput + PrintWindow)
 //   Linux: plugprobe_os_linux.cpp (stub: AT-SPI + XTest + XGetImage)
 // Handles are opaque void* (NSView / HWND / X11 Window) so callers stay
@@ -38,7 +38,7 @@ bool plugprobeAxDragAt(double x, double y, double dx, double dy);
 bool plugprobeAxTypeText(const char* text);
 void plugprobePumpApp(double seconds);
 #if __APPLE__
-// Accessibility trust: ad-hoc signatures change hash every rebuild, which
-// invalidates the grant — HID drag/type must check this at runtime.
-extern "C" bool AXIsProcessTrusted(void);
+#include <ApplicationServices/ApplicationServices.h>  // AXIsProcessTrusted:
+// ad-hoc signatures change hash every rebuild, which invalidates the grant —
+// HID drag/type must check this at runtime.
 #endif

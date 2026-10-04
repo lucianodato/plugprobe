@@ -231,8 +231,7 @@ no hardcoded coords anywhere. Static libstdc++/MT, syslibs dynamic per
 workspace policy. CI runs snapshot/act/render per OS once its backend lands.
 No REAPER.
 
-Backend status: macOS is the only real backend (`plugprobe_os.mm` +
-`plugprobe_shot.mm`). Windows (`plugprobe_os_win.cpp`) and Linux
+Backend status: macOS is the only real backend (`plugprobe_os_mac.mm`). Windows (`plugprobe_os_win.cpp`) and Linux
 (`plugprobe_os_linux.cpp`) are compiled stubs returning failure, so those
 platforms fail loud (`UNIMPLEMENTED_M1`) instead of pretending; each stub
 names the exact native APIs its real backend needs.

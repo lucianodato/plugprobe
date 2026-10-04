@@ -187,7 +187,7 @@ std::unique_ptr<juce::AudioPluginInstance> instantiate(
 
 // --- Opt-in live UI (visible windows) + editor screenshots ---
 // Diagnostic-only: never fail the command; off by default (headless path is
-// byte-identical without them). macOS-only capture (plugprobe_shot.mm).
+// byte-identical without them). macOS-only capture (plugprobe_os_mac.mm).
 bool guiCapable(const juce::PluginDescription& desc) {
   return desc.pluginFormatName.containsIgnoreCase("VST3") ||
          desc.pluginFormatName.containsIgnoreCase("AudioUnit");

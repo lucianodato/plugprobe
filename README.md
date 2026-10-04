@@ -81,8 +81,7 @@ writes a per-file compare CSV against a reference plugin.
 
 ```
 src/plugprobe.cpp      CLI: scan/inspect/snapshot/act/render/compare
-src/plugprobe_os.mm    macOS AX/CGEvent driver (snapshot dump, press, HID click/drag/type)
-src/plugprobe_shot.mm  NSView capture + composited-window fallback + show-front
+src/plugprobe_os_mac.mm   macOS AX/CGEvent driver + NSView capture + show-front
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
 SPEC.md                full spec (v0.2, pre-rename; CLI contract in §3)
