@@ -49,8 +49,9 @@ jobs:
           [ -x "$BIN" ] || { echo "binary missing: $BIN"; exit 1; }
           # file(1), not lipo: Xcode 26's lipo -info reports a fat binary as
           # "(architecture arm64)" while file shows both slices correctly.
-          OUT=$(file "$BIN" | head -n 1)
-          case "$OUT" in *x86_64*arm64*|*arm64*x86_64*) :;; *) echo "$OUT"; exit 1;; esac
+          OUT=$(file "$BIN")
+          echo "$OUT"
+          case "$OUT" in *x86_64*arm64*|*arm64*x86_64*) :;; *) exit 1;; esac
           LEAKS=$(otool -L "$BIN" 2>/dev/null | tail -n +2 | grep -vE '^[[:space:]]*(/usr/lib|/System)' || true)
           if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
           echo "[PASS] plugprobe (Universal x86_64+arm64, system deps only)"
