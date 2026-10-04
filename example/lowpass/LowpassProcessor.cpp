@@ -242,6 +242,8 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
     cutoff.setSliderStyle(juce::Slider::LinearHorizontal);
     cutoff.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     cutoff.setRange(20, 20000);
+    cutoff.setValue(20000, juce::dontSendNotification);  // match param default:
+    // no thumb jump on open, video starts fully open then sweeps down
     cutoff.setName("Cutoff");  // stable AX node id (AXSlider:Cutoff)
     cutoff.setTitle("Cutoff");
     cutoff.setLookAndFeel(&lnf);

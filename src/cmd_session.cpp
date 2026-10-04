@@ -114,6 +114,9 @@ int runSessionStart(const juce::var& args) {
                                ? args["params"]
                                : juce::var(new juce::DynamicObject()));
   s->setProperty("events", juce::var(juce::Array<juce::var>()));
+  // Take opens here; acts replay on top. Stop must not seed the render with
+  // final params, or the take/video opens in the end state (e.g. 1kHz).
+  s->setProperty("startParams", s->getProperty("params"));
   juce::var sv(s);
   if (!saveSessionVar(sv)) {
     emitErr(errObj("IO", "cannot write session dir: " + dir));
@@ -448,7 +451,8 @@ int runSessionStop(const juce::var& args) {
   ra->setProperty("sr", sr);
   ra->setProperty("block", block);
   ra->setProperty("bypass", (bool)s["bypass"]);
-  ra->setProperty("params", s["params"]);
+  ra->setProperty("params", s.hasProperty("startParams") ? s["startParams"]
+                                                           : s["params"]);
   ra->setProperty("timeline", juce::var(tl));
   ra->setProperty("tail_ms", 0);
   if (jstr(s, "video").isNotEmpty()) ra->setProperty("video", s["video"]);
