@@ -22,3 +22,9 @@ void plugprobeFocusWindow(void*) {}
 bool plugprobeAxDragAt(double, double, double, double) { return false; }
 bool plugprobeAxTypeText(const char*) { return false; }
 void plugprobePumpApp(double) {}
+// Real backend: Media Foundation screen capture + Sink Writer MP4,
+// take WAV muxed as the audio track (see macOS backend for the shape).
+void* plugprobeScreenRecStart(void*, std::string&) { return nullptr; }
+bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
+  return false;
+}

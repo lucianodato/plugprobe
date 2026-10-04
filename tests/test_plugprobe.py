@@ -102,6 +102,18 @@ class Contract(unittest.TestCase):
         c, _ = run("compare", {"a": src, "b": take})
         self.assertLess(c["data"]["nullDb"], -60.0)  # passthrough take
 
+    def test_video_skipped_without_instance(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        o = os.path.join(tmp, "o.wav")
+        r, _ = run("render", {"plugin": "none", "in": src, "out": o,
+                              "bypass": True, "tail_ms": 0,
+                              "video": os.path.join(tmp, "v.mp4")})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["data"]["videoSkipped"], "bypass-no-instance")
+
     def test_stubs_fail_loudly(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")

@@ -42,3 +42,13 @@ void plugprobePumpApp(double seconds);
 // ad-hoc signatures change hash every rebuild, which invalidates the grant —
 // HID drag/type must check this at runtime.
 #endif
+
+// --- Screen recording (opt-in `video` on render; macOS AVCapture only) ---
+// Opaque handle; start captures the display region behind the editor window
+// (needs it on-screen + the Screen Recording grant). finish stops capture
+// and muxes wavIn (the rendered take) as the audio track into mp4Out, so
+// what you see produced exactly what you hear. Diagnostic-only: failures
+// return false/empty, never throw; the audio take is unaffected.
+void* plugprobeScreenRecStart(void* nsView, std::string& err);
+bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
+                              std::string& err);

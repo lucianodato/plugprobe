@@ -50,7 +50,8 @@ if(APPLE)
     # console apps don't get JUCE's GUI-app framework links; AU hosting needs them
     target_link_libraries(plugprobe PRIVATE
         "-framework AudioUnit" "-framework AudioToolbox" "-framework CoreAudio"
-        "-framework CoreAudioKit" "-framework Cocoa" "-framework ApplicationServices")
+        "-framework CoreAudioKit" "-framework Cocoa" "-framework ApplicationServices"
+        "-framework AVFoundation" "-framework CoreMedia")
 endif()
 target_link_libraries(plugprobe PRIVATE
     juce::juce_audio_processors

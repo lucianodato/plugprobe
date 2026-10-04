@@ -31,9 +31,20 @@ int runRender(const juce::var& args)
     juce::AudioPluginInstance* inst = nullptr;
     juce::AudioProcessorEditor* visEd = nullptr;
     juce::String visWhy, edWhy;
+    void* vidRec = nullptr;  // screen recording; stopped+muxed after writeWav
+    juce::String vidWhy, vidSaved;
     juce::PluginDescription renderDesc;
     bool wantShot = jstr(args, "shot").isNotEmpty();
     bool wantVis = (bool)args["visible"];
+    juce::String videoP = jstr(args, "video");
+    if (videoP.isNotEmpty()) {
+#if !JUCE_MAC
+      emitErr(errObj("NO_OS_DRIVER", "render: video is macOS-only"));
+      return 1;
+#else
+      if (!wantVis) wantVis = true;  // video watches the live window
+#endif
+    }
     if (!bypass) {
       juce::PluginDescription d;
       if (!findPlugin(jstr(args, "plugin"), argPaths(args), d)) {
@@ -45,7 +56,7 @@ int runRender(const juce::var& args)
       // clicked, so the window reflects the audio being rendered (live
       // meters, real clicks). The default path stays headless (byte-identical).
       // Timeline entries are pre-scanned: the full parse happens later.
-      bool wantGui = wantShot || wantVis;
+      bool wantGui = wantShot || wantVis || videoP.isNotEmpty();
       if (!wantGui) {
         if (auto* tl0 = args["timeline"].getArray()) {
           for (auto& e0 : *tl0) {
@@ -222,6 +233,18 @@ int runRender(const juce::var& args)
         emitErr(errObj("ARGS", "render: timeline clicks need a live editor "
                                "window: " + edWhy));
         return 1;
+      }
+      // Opt-in screen recording: captures the live window for the whole
+      // paced pass; the take WAV is muxed in as audio when it lands.
+      // Diagnostic-only (like shots): a dead recorder never fails the take.
+      if (videoP.isNotEmpty()) {
+        if (visEd == nullptr) {
+          vidWhy = edWhy.isNotEmpty() ? edWhy : "no-editor";
+        } else {
+          std::string ve;
+          vidRec = plugprobeScreenRecStart(visEd->getWindowHandle(), ve);
+          if (vidRec == nullptr) vidWhy = juce::String(ve);
+        }
       }
       size_t ei = 0, bc = 0;
       juce::AudioBuffer<float> blk(std::max(2, nCh), block);
@@ -404,6 +427,20 @@ int runRender(const juce::var& args)
       emitErr(errObj("IO", "cannot write output wav"));
       return 1;
     }
+    if (vidRec != nullptr) {
+      std::string fe;
+      juce::String wavAbs = juce::File::isAbsolutePath(outP)
+                                ? outP
+                                : juce::File::getCurrentWorkingDirectory()
+                                      .getChildFile(outP)
+                                      .getFullPathName();
+      if (plugprobeScreenRecFinish(vidRec, wavAbs.toRawUTF8(),
+                                   videoP.toRawUTF8(), fe))
+        vidSaved = videoP;
+      else if (vidWhy.isEmpty())
+        vidWhy = juce::String(fe);
+      vidRec = nullptr;
+    }
     auto* o = new juce::DynamicObject();
     o->setProperty("out", outP);
     o->setProperty("sr", sr);
@@ -425,6 +462,15 @@ int runRender(const juce::var& args)
                                              : shotWhy.isNotEmpty()
                                                    ? shotWhy
                                                    : "no-editor-or-headless");
+    }
+    if (videoP.isNotEmpty()) {
+      if (vidSaved.isNotEmpty())
+        o->setProperty("video", vidSaved);
+      else
+        o->setProperty("videoSkipped", bypass ? "bypass-no-instance"
+                                              : vidWhy.isNotEmpty()
+                                                    ? vidWhy
+                                                    : "no-editor-or-headless");
     }
     if (wantVis && bypass && visWhy.isEmpty()) visWhy = "bypass-no-instance";
     if (wantVis) {

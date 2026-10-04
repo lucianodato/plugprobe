@@ -100,6 +100,8 @@ int runSessionStart(const juce::var& args) {
   };
   s->setProperty("loop", abspath(loop));
   s->setProperty("out", abspath(outP));
+  if (jstr(args, "video").isNotEmpty())
+    s->setProperty("video", abspath(jstr(args, "video")));
   s->setProperty("sr", sr);
   s->setProperty("block", block);
   s->setProperty("visible", (bool)args["visible"]);
@@ -384,6 +386,7 @@ int runSessionStop(const juce::var& args) {
   ra->setProperty("params", s["params"]);
   ra->setProperty("timeline", juce::var(tl));
   ra->setProperty("tail_ms", 0);
+  if (jstr(s, "video").isNotEmpty()) ra->setProperty("video", s["video"]);
   if ((bool)s["visible"]) ra->setProperty("visible", true);
   tmp.replaceWithText(juce::JSON::toString(juce::var(ra), true));
   juce::String exe = juce::File::getSpecialLocation(
