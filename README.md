@@ -7,7 +7,7 @@ offline, diff the results. No DAW.
 Single JUCE/C++ CLI, no new dependencies. Headless by
 default (byte-identical renders); UI/visible/screenshot paths are opt-in.
 OS driver + capture are macOS-only today; Windows/Linux backends are
-compiled stubs that fail loud (`UNIMPLEMENTED_M1`).
+compiled stubs that fail loud (`NO_OS_DRIVER`).
 
 ## Commands
 

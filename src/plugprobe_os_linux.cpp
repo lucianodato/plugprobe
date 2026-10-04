@@ -9,7 +9,7 @@
 //   capture: XGetImage/XShmGetImage on X11; Wayland needs the ScreenCast
 //     portal (async, session-gated) — same blank-grab rule as macOS.
 //   grants: none on X11; portals prompt per-session on Wayland.
-// Until then callers fail loud with UNIMPLEMENTED_M1, never silent no-ops.
+// Until then callers fail loud with NO_OS_DRIVER, never silent no-ops.
 #include "plugprobe_os.h"
 
 int plugprobeSaveNSViewShot(void*, const char*, int*, int*) { return 0; }

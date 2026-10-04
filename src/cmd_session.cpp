@@ -192,13 +192,13 @@ int runSessionAct(const juce::var& args) {
       return 1;
     }
 #if !JUCE_MAC
-    emitErr(errObj("UNIMPLEMENTED_M1", "session act clicks are macOS-only"));
+    emitErr(errObj("NO_OS_DRIVER", "session act clicks are macOS-only"));
     return 1;
 #else
     juce::PluginDescription d;
     if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
         !guiCapable(d)) {
-      emitErr(errObj("UNIMPLEMENTED_M1", "session act clicks need a "
+      emitErr(errObj("NO_OS_DRIVER", "session act clicks need a "
                                         "GUI-hosted plugin (VST3/AU)"));
       return 1;
     }

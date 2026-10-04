@@ -7,7 +7,7 @@
 //   Linux: plugprobe_os_linux.cpp (stub: AT-SPI + XTest + XGetImage)
 // Handles are opaque void* (NSView / HWND / X11 Window) so callers stay
 // platform-agnostic. Backends that cannot do the job return failure;
-// callers translate that to loud errors (UNIMPLEMENTED_M1), never no-ops.
+// callers translate that to loud errors (NO_OS_DRIVER), never no-ops.
 #pragma once
 
 #include <string>

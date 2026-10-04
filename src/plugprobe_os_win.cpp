@@ -8,7 +8,7 @@
 //     node->screen mapping via GetWindowRect (client space, like macOS).
 //   capture: PrintWindow with PW_RENDERFULLCONTENT, blank-grab rule as macOS.
 //   grants: none for own-user editor windows (UIPI integrity levels apply).
-// Until then callers fail loud with UNIMPLEMENTED_M1, never silent no-ops.
+// Until then callers fail loud with NO_OS_DRIVER, never silent no-ops.
 #include "plugprobe_os.h"
 
 int plugprobeSaveNSViewShot(void*, const char*, int*, int*) { return 0; }

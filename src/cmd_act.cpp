@@ -29,7 +29,7 @@ int runAct(const juce::var& args)
     }
     if (via == "os") {
 #if !JUCE_MAC
-      emitErr(errObj("UNIMPLEMENTED_M1", "os driver is macOS-only"));
+      emitErr(errObj("NO_OS_DRIVER", "os driver is macOS-only"));
       return 1;
 #else
       // Standalone os actions run against a probe window (no audio flows):
@@ -91,7 +91,7 @@ int runAct(const juce::var& args)
         return 1;
       }
       if (!guiCapable(d)) {
-        emitErr(errObj("UNIMPLEMENTED_M1", "os driver needs a GUI-hosted "
+        emitErr(errObj("NO_OS_DRIVER", "os driver needs a GUI-hosted "
                                            "plugin (VST3/AU); LV2/etc expose "
                                            "no native window to click"));
         return 1;

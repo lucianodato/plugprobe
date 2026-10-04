@@ -188,7 +188,7 @@ int runRender(const juce::var& args)
           if (eclick.isNotEmpty() || clickIsCoord) hasEntryClick = true;
 #if !JUCE_MAC
           if (eclick.isNotEmpty() || clickIsCoord) {
-            emitErr(errObj("UNIMPLEMENTED_M1", "render: timeline clicks are "
+            emitErr(errObj("NO_OS_DRIVER", "render: timeline clicks are "
                                                "macOS-only"));
             return 1;
           }
