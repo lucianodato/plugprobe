@@ -54,6 +54,7 @@ jobs:
         run: |
           BIN=build/plugprobe_artefacts/Release/plugprobe
           [ -x "$BIN" ] || { echo "binary missing: $BIN"; exit 1; }
+          file "$BIN"
           INFO=$(lipo -info "$BIN" 2>&1)
           case "$INFO" in *x86_64*arm64*|*arm64*x86_64*) :;; *) echo "$INFO"; exit 1;; esac
           LEAKS=$(otool -L "$BIN" 2>/dev/null | tail -n +2 | grep -vE '^[[:space:]]*(/usr/lib|/System)' || true)
