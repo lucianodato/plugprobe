@@ -29,7 +29,9 @@ else()
 endif()
 
 juce_add_console_app(plugprobe PRODUCT_NAME "plugprobe")
-target_sources(plugprobe PRIVATE src/plugprobe.cpp)
+target_sources(plugprobe PRIVATE src/main.cpp src/core.cpp src/gui.cpp
+    src/cmd_scan.cpp src/cmd_inspect.cpp src/cmd_snapshot.cpp src/cmd_act.cpp
+    src/cmd_render.cpp src/cmd_compare.cpp)
 if(APPLE)
     target_sources(plugprobe PRIVATE src/plugprobe_os_mac.mm)
 elseif(WIN32)
