@@ -1,14 +1,14 @@
 # GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 cmake_minimum_required(VERSION 3.22)
+# Universal macOS binary (arm64+x86_64). Set before project() so every target
+# inherits it; harmless elsewhere (only consumed for Apple targets).
+set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64")
 project(plugprobe VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if(APPLE)
-    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
-endif()
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()

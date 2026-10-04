@@ -28,11 +28,10 @@ int runAct(const juce::var& args)
       }
     }
     if (via == "os") {
-#if !JUCE_MAC
-      emitErr(errObj("NO_OS_DRIVER", "os driver is macOS-only"));
-      return 1;
-#else
-      // Standalone os actions run against a probe window (no audio flows):
+      // Shape validation + plugin lookup run on every OS (portable, no
+      // instance needed): malformed steps are ARGS and unknown plugins
+      // NOT_FOUND everywhere — only the driver work below is macOS-only.
+      // Standalone os actions run against a probe window (no audio flows),
       // labeled detached, like the juce probe. Real effect only happens for
       // timeline clicks inside a render, on the rendering instance.
       // Shape validation first (no instance needed): malformed steps fail
@@ -90,6 +89,10 @@ int runAct(const juce::var& args)
         emitErr(errObj("NOT_FOUND", "plugin not found"));
         return 1;
       }
+#if !JUCE_MAC
+      emitErr(errObj("NO_OS_DRIVER", "os driver is macOS-only"));
+      return 1;
+#else
       if (!guiCapable(d)) {
         emitErr(errObj("NO_OS_DRIVER", "os driver needs a GUI-hosted "
                                            "plugin (VST3/AU); LV2/etc expose "

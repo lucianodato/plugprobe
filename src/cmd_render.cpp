@@ -39,8 +39,8 @@ int runRender(const juce::var& args)
     juce::String videoP = jstr(args, "video");
     if (videoP.isNotEmpty()) {
 #if !JUCE_MAC
-      emitErr(errObj("NO_OS_DRIVER", "render: video is macOS-only"));
-      return 1;
+      // Diagnostic-only like shots: the take still succeeds with videoSkipped.
+      vidWhy = "macOS-only (NO_OS_DRIVER); take unaffected";
 #else
       if (!wantVis) wantVis = true;  // video watches the live window
 #endif
@@ -56,7 +56,10 @@ int runRender(const juce::var& args)
       // clicked, so the window reflects the audio being rendered (live
       // meters, real clicks). The default path stays headless (byte-identical).
       // Timeline entries are pre-scanned: the full parse happens later.
-      bool wantGui = wantShot || wantVis || videoP.isNotEmpty();
+      bool wantGui = wantShot || wantVis;
+#if JUCE_MAC
+      wantGui = wantGui || videoP.isNotEmpty();
+#endif
       if (!wantGui) {
         if (auto* tl0 = args["timeline"].getArray()) {
           for (auto& e0 : *tl0) {
@@ -238,6 +241,7 @@ int runRender(const juce::var& args)
       // paced pass; the take WAV is muxed in as audio when it lands.
       // Diagnostic-only (like shots): a dead recorder never fails the take.
       if (videoP.isNotEmpty()) {
+#if JUCE_MAC
         if (visEd == nullptr) {
           vidWhy = edWhy.isNotEmpty() ? edWhy : "no-editor";
         } else {
@@ -245,6 +249,7 @@ int runRender(const juce::var& args)
           vidRec = plugprobeScreenRecStart(visEd->getWindowHandle(), ve);
           if (vidRec == nullptr) vidWhy = juce::String(ve);
         }
+#endif
       }
       size_t ei = 0, bc = 0;
       juce::AudioBuffer<float> blk(std::max(2, nCh), block);

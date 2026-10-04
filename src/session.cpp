@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace pp {
 juce::File resolveSessionFile(const juce::String& s) {
@@ -123,7 +124,7 @@ void metersOf(const std::vector<std::vector<float>>& ch, double sr,
     std::vector<float> w(8192, 0);
     size_t f0 = end - std::min(avail, (size_t)4096);
     for (size_t i = 0; i < 4096 && f0 + i < end; ++i) {
-      float hann = 0.5f - 0.5f * std::cos(2 * M_PI * i / 4096);
+      float hann = 0.5f - 0.5f * std::cos(2 * std::numbers::pi * i / 4096);
       w[i] = ch[0][f0 + i] * hann;
     }
     fft.performFrequencyOnlyForwardTransform(w.data());

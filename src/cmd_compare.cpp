@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace pp {
@@ -45,7 +46,7 @@ void compareBufs(const std::vector<float>& a, const std::vector<float>& b,
     double t = (double)i / sr;
     double res = (double)a[i] - g * b[i];
     eart += res * res;
-    bandAcc += res * std::cos(2 * M_PI * 3000.0 * t);
+    bandAcc += res * std::cos(2 * std::numbers::pi * 3000.0 * t);
   }
   double specDist = 0;
   {
@@ -54,7 +55,7 @@ void compareBufs(const std::vector<float>& a, const std::vector<float>& b,
     int wins = 0;
     for (size_t st = n0; st + 4096 < m; st += 2048) {
       for (int i = 0; i < 4096; ++i) {
-        float w = 0.5f - 0.5f * std::cos(2 * M_PI * i / 4096);
+        float w = 0.5f - 0.5f * std::cos(2 * std::numbers::pi * i / 4096);
         wa[(size_t)i] = a[st + (size_t)i] * w;
         wb[(size_t)i] = b[st + (size_t)i] * w;
       }
