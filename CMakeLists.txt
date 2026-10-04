@@ -29,6 +29,11 @@ else()
 endif()
 
 juce_add_console_app(plugprobe PRODUCT_NAME "plugprobe")
+if(APPLE)
+    # Explicit per-target slices: CMAKE_OSX_ARCHITECTURES alone produced a
+    # thin arm64 binary on one CI toolchain despite being in the cache.
+    set_target_properties(plugprobe PROPERTIES OSX_ARCHITECTURES "arm64;x86_64")
+endif()
 target_sources(plugprobe PRIVATE src/main.cpp src/core.cpp src/gui.cpp
     src/cmd_scan.cpp src/cmd_inspect.cpp src/cmd_snapshot.cpp src/cmd_act.cpp
     src/cmd_render.cpp src/cmd_compare.cpp src/cmd_session.cpp src/session.cpp)
