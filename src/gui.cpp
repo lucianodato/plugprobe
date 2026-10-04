@@ -202,10 +202,19 @@ juce::var hitNodeAt(void* hv, double x, double y) {
 // attach asynchronously after addToDesktop, so a single synchronous dump
 // races them — especially cold in CI. Pumps both runloops while waiting.
 bool axWaitForId(void* hv, const juce::String& nodeId, int timeoutMs) {
+  bool triedActivate = false;
   int waited = 0;
   while (waited <= timeoutMs) {
-    for (auto& nn : plugprobeAxDump(hv))
+    auto nodes = plugprobeAxDump(hv);
+    for (auto& nn : nodes)
       if (juce::String(nn.id) == nodeId) return true;
+    // Headless CI sessions expose zero AX windows until the app activates:
+    // one attempt, only when the tree is empty (local runs with a visible
+    // tree never touch this — no dock bounce, no focus steal).
+    if (!triedActivate && nodes.empty()) {
+      triedActivate = true;
+      plugprobeTryActivate();
+    }
     pumpMessages();
     plugprobePumpApp(0.05);
     waited += 100;

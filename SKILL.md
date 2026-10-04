@@ -27,7 +27,8 @@ Agent-driven audio plugin host. CLI-only: every command is
    → UI node ids (`role,name,bounds`).
 3. **Act**: `act --json {plugin, via:"os"|"juce", action:{target,value}}`.
    Node-id press works headless; `set` drives sliders in native units
-   (param-less controls, still grant-free); raw `{x,y}` clicks, drag, type
+   (param-less controls, still grant-free, needs a GUI session with AX
+   windows — probe via `snapshot` first); raw `{x,y}` clicks, drag, type
    need `"visible":true` + macOS Accessibility grant for the binary.
 4. **Render**: `render --json {plugin,in,out,...}` → `{out,hash,peakDb}`.
    Presets via `params_json` (explicit `params` win); instruments via

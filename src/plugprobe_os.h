@@ -42,6 +42,11 @@ void plugprobeFocusWindow(void* nsView);
 bool plugprobeAxDragAt(double x, double y, double dx, double dy);
 bool plugprobeAxTypeText(const char* text);
 void plugprobePumpApp(double seconds);
+// One-shot activation attempt for headless sessions (CI): console tools may
+// start with no GUI presence, leaving the AX window list empty despite the
+// trust grant. Only call when the AX tree comes back empty — interactive
+// runs never touch it (no dock bounce, no focus steal).
+void plugprobeTryActivate();
 #if __APPLE__
 #include <ApplicationServices/ApplicationServices.h>  // AXIsProcessTrusted:
 // ad-hoc signatures change hash every rebuild, which invalidates the grant —

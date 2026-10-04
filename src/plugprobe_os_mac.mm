@@ -276,6 +276,14 @@ void plugprobePumpApp(double seconds) {
   }
   [NSApp updateWindows];
 }
+// One-shot activation for headless sessions (CI): console tools may start
+// with no GUI presence, leaving the AX window list empty despite the trust
+// grant. Only called when the AX tree comes back empty — interactive runs
+// never touch this (no dock bounce, no focus steal).
+void plugprobeTryActivate() {
+  [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+  [NSApp activateIgnoringOtherApps:YES];
+}
 // Bring our hosted window key before HID events post: the first click on an
 // inactive window only activates it (no click-through for buttons), so an
 // unfocused clickAt would toggle nothing. API activation + drain, no cursor
