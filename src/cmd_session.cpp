@@ -144,9 +144,11 @@ int runSessionAct(const juce::var& args) {
   bool hasParams = args.hasProperty("params");
   juce::String clickId = jstr(args, "click");
   bool coordClick = args.hasProperty("click") && args["click"].isObject();
-  if (!hasParams && clickId.isEmpty() && !coordClick) {
+  bool hasSlider = args.hasProperty("slider") && args["slider"].isObject();
+  if (!hasParams && clickId.isEmpty() && !coordClick && !hasSlider) {
     emitErr(errObj("ARGS", "session act needs {params:{...}} and/or "
-                           "{click:<node-id>|{x,y}} (snapshot lists ids)"));
+                           "{click:<node-id>|{x,y}} and/or "
+                           "{slider:{target,value}} (snapshot lists ids)"));
     return 1;
   }
   auto* ev = new juce::DynamicObject();
@@ -253,6 +255,72 @@ int runSessionAct(const juce::var& args) {
     ev->setProperty("replayAtStop", true);
 #endif
   }
+  if (args.hasProperty("slider") && !hasSlider) {
+    emitErr(errObj("ARGS", "session act: slider needs {target,value} "
+                               "(value in native units, snapshot shows "
+                               "current)"));
+    return 1;
+  }
+  if (hasSlider) {
+    // Widget-level set for param-less sliders: verified read-only here,
+    // effected once at stop replay (grant-free, headless-safe).
+    auto sv = args["slider"]["value"];
+    juce::String sTarget = jstr(args["slider"], "target");
+    if (sTarget.isEmpty() || (!sv.isDouble() && !sv.isInt())) {
+      emitErr(errObj("ARGS", "session act: slider needs {target,value} "
+                                 "(value in native units, snapshot shows "
+                                 "current)"));
+      return 1;
+    }
+    if (bypass) {
+      emitErr(errObj("ARGS", "session act: bypass session has no editor"));
+      return 1;
+    }
+#if !JUCE_MAC
+    emitErr(errObj("NO_OS_DRIVER", "session act sliders are macOS-only"));
+    return 1;
+#else
+    juce::PluginDescription d;
+    if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
+        !guiCapable(d)) {
+      emitErr(errObj("NO_OS_DRIVER", "session act sliders need a "
+                                        "GUI-hosted plugin (VST3/AU)"));
+      return 1;
+    }
+    juce::String ge;
+    auto gui = guiCreate(d, sr, block, ge);
+    if (gui == nullptr) {
+      emitErr(errObj("INSTANTIATE",
+                     juce::String("gui-instantiate: ") + ge.substring(0, 120)));
+      return 1;
+    }
+    juce::String why;
+    auto* ed = openEditor(*gui, false, why);
+    if (ed == nullptr) {
+      emitErr(errObj("NO_EDITOR",
+                     juce::String("session act slider needs an editor: ") + why));
+      return 1;
+    }
+    bool found = false;
+    for (auto& nn : plugprobeAxDump(ed->getWindowHandle()))
+      if (juce::String(nn.id) == sTarget) {
+        found = true;
+        if (!nn.value.empty()) ev->setProperty("nodeState", juce::String(nn.value));
+        break;
+      }
+    if (ed->isOnDesktop()) ed->removeFromDesktop();
+    if (!found) {
+      emitErr(errObj("ARGS", "session act: unknown node '" + sTarget +
+                                 "' (snapshot lists ids)"));
+      return 1;
+    }
+    auto* se = new juce::DynamicObject();
+    se->setProperty("target", sTarget);
+    se->setProperty("value", (double)sv);
+    ev->setProperty("slider", juce::var(se));
+    ev->setProperty("replayAtStop", true);
+#endif
+  }
   auto* so = s.getDynamicObject();
   juce::Array<juce::var> events(*s["events"].getArray());
   events.add(juce::var(ev));
@@ -262,7 +330,7 @@ int runSessionAct(const juce::var& args) {
     return 1;
   }
   // Ears: meters over the loop with post-act params (params plane; clicks
-  // land at stop replay, so meters here reflect params only).
+  // and slider sets land at stop replay, so meters here reflect params only).
   std::vector<std::vector<float>> ch;
   double fsr = sr;
   readWav(s["loop"].toString(), ch, fsr);
@@ -290,6 +358,7 @@ int runSessionAct(const juce::var& args) {
     o->setProperty("uiOnly", true);
     o->setProperty("replayAtStop", true);
     if (clickId.isNotEmpty()) o->setProperty("node", clickId);
+    if (hasSlider) o->setProperty("node", jstr(args["slider"], "target"));
   }
   o->setProperty("meters",
                  juce::var(m));  // compact deltas, never full state
@@ -359,6 +428,7 @@ int runSessionStop(const juce::var& args) {
     t->setProperty("atMs", (double)e["atMs"]);
     if (e.hasProperty("params")) t->setProperty("params", e["params"]);
     if (e.hasProperty("click")) t->setProperty("click", e["click"]);
+    if (e.hasProperty("slider")) t->setProperty("slider", e["slider"]);
     tl.add(juce::var(t));
     auto* l = new juce::DynamicObject();
     l->setProperty("atMs", (double)e["atMs"]);
@@ -369,6 +439,7 @@ int runSessionStop(const juce::var& args) {
       l->setProperty("deltaCount", (int)e["deltaCount"]);
     }
     if (e.hasProperty("click")) l->setProperty("click", e["click"]);
+    if (e.hasProperty("slider")) l->setProperty("slider", e["slider"]);
     log.add(juce::var(l));
   }
   // ponytail: re-exec this binary for the take — one render engine, zero

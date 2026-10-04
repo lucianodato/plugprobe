@@ -17,6 +17,7 @@ bool plugprobeShowFront(void*) { return false; }
 
 std::vector<PlugprobeAxNode> plugprobeAxDump(void*) { return {}; }
 int plugprobeAxPressById(const char*, void*, double*, double*) { return -1; }
+int plugprobeAxSetValueById(const char*, void*, double, double*) { return -1; }
 bool plugprobeAxClickAt(double, double) { return false; }
 void plugprobeFocusWindow(void*) {}
 bool plugprobeAxDragAt(double, double, double, double) { return false; }

@@ -66,15 +66,32 @@ int runAct(const juce::var& args)
                                  "raw {x,y} grounded by a visible screenshot)"));
           return false;
         }
-        if (op != "press" && op != "click" && op != "drag" && op != "type") {
+        if (op != "press" && op != "click" && op != "drag" &&
+            op != "type" && op != "set") {
           emitErr(errObj("ARGS", "os act: unknown op '" + op +
-                                   "' (press|drag|type)"));
+                                   "' (press|drag|type|set)"));
           return false;
         }
         if (op == "type" &&
             (!s.hasProperty("text") || s["text"].toString().isEmpty())) {
           emitErr(errObj("ARGS", "os act: type needs {text}"));
           return false;
+        }
+        if (op == "set") {
+          // Grant-free slider path (own-process AX value, no HID): the way
+          // to move controls with no parameter behind them, headless.
+          // value is in the control's NATIVE units (snapshot shows current).
+          if (isCoord) {
+            emitErr(errObj("ARGS", "os act: set needs a node id target, not "
+                                       "{x,y} (snapshot lists ids)"));
+            return false;
+          }
+          if (!s.hasProperty("value") || (!s["value"].isDouble() &&
+                                             !s["value"].isInt())) {
+            emitErr(errObj("ARGS", "os act: set needs {target,value} "
+                                       "(value in native units)"));
+            return false;
+          }
         }
         return true;
       };
@@ -309,6 +326,23 @@ int runAct(const juce::var& args)
             r->setProperty("node", tgt);
             r->setProperty("typed", text);
           }
+        } else if (op == "set") {
+          double v = (double)s["value"];  // native control units, unclamped:
+          double actual = 0;              // the control clamps, state proves it
+          int rc = plugprobeAxSetValueById(tgt.toRawUTF8(), hv, v, &actual);
+          if (rc == 0) {
+            emitErr(errObj("ARGS", "os act: unknown node '" + tgt +
+                                     "' (snapshot lists ids)"));
+            return false;
+          }
+          if (rc < 0) {
+            emitErr(errObj("AX_SET", "os act: set failed on '" + tgt + "'"));
+            return false;
+          }
+          pumpMessages();
+          r->setProperty("node", tgt);
+          r->setProperty("set", v);
+          r->setProperty("state", actual);  // re-read proof it landed
         }
         r->setProperty("op", op);
         res.add(juce::var(r));

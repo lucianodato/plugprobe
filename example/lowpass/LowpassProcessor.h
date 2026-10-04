@@ -40,6 +40,10 @@ class LowpassProcessor : public juce::AudioProcessor {
   // Latest 1024-bin linear magnitudes (ch 0); drained by the editor.
   bool spectrumIfFresh(std::array<float, 1024>& out);
   juce::AudioParameterFloat* cutoffParam() const { return cutoff; }
+  // Param-less trim (NOT an AudioParameter): invisible to the params plane,
+  // movable only through the editor slider — the fixture's stand-in for
+  // controls no param can reach.
+  std::atomic<float> trim{1.0f};
 
  private:
   juce::AudioParameterFloat* cutoff = nullptr;

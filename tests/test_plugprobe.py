@@ -239,6 +239,26 @@ class Contract(unittest.TestCase):
         r2, _ = run("render", a)
         self.assertEqual(r1["data"]["hash"], r2["data"]["hash"])
 
+    def test_session_slider_args(self):
+        if not BIN:
+            self.skipTest("PLUGPROBE_BIN unset")
+        tmp = tempfile.mkdtemp()
+        src = make_wav(os.path.join(tmp, "in.wav"))
+        take = os.path.join(tmp, "take.wav")
+        s, _ = run("session-start", {"loop": src, "out": take,
+                                     "bypass": True})
+        self.assertTrue(s["ok"])
+        ses = s["data"]["session"]
+        a, _ = run("session-act", {"session": ses,
+                                   "slider": {"target": "X", "value": 1}})
+        self.assertEqual(a["error"]["code"], "ARGS")  # bypass: no editor
+        for bad in ({"target": "X"}, {"target": "", "value": 1},
+                    {"target": "X", "value": "hi"}, "nope"):
+            a, _ = run("session-act", {"session": ses, "slider": bad})
+            self.assertEqual(a["error"]["code"], "ARGS", bad)
+        st, _ = run("session-stop", {"session": ses})
+        self.assertTrue(st["ok"])
+
     def test_stubs_fail_loudly(self):
         if not BIN:
             self.skipTest("PLUGPROBE_BIN unset")

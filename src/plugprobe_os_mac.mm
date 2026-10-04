@@ -226,6 +226,41 @@ int plugprobeAxPressById(const char* nodeId, void* nsView, double* cx,
   releaseAll(found);
   return rc;
 }
+// 1 set / 0 unknown id / -1 set failed. Re-read value out in actual.
+int plugprobeAxSetValueById(const char* nodeId, void* nsView, double value,
+                            double* actual) {
+  if (nodeId == nullptr) return 0;
+  auto found = collect(nsView);
+  int rc = 0;
+  for (auto& f : found) {
+    if (f.node.id == nodeId) {
+      // Native units, as text: JUCE's bridge takes AXValue as a string
+      // (setValueAsString); a CFNumber set is rejected.
+      CFStringRef vs = CFStringCreateWithFormat(nullptr, nullptr, CFSTR("%.6f"),
+                                               value);
+      rc = AXUIElementSetAttributeValue(f.el, kAXValueAttribute, vs) ==
+                   kAXErrorSuccess
+               ? 1
+               : -1;
+      CFRelease(vs);
+      if (rc == 1 && actual != nullptr) {
+        CFTypeRef cur = nullptr;
+        if (AXUIElementCopyAttributeValue(f.el, kAXValueAttribute, &cur) ==
+                kAXErrorSuccess &&
+            cur != nullptr) {
+          if (CFGetTypeID(cur) == CFNumberGetTypeID())
+            CFNumberGetValue((CFNumberRef)cur, kCFNumberDoubleType, actual);
+          else if (CFGetTypeID(cur) == CFStringGetTypeID())
+            *actual = [(NSString*)cur doubleValue];  // toll-free bridge
+          CFRelease(cur);
+        }
+      }
+      break;
+    }
+  }
+  releaseAll(found);
+  return rc;
+}
 // Pump AppKit event delivery. A console tool never runs [NSApp run], so
 // CFRunLoop pumping alone leaves posted HID events stranded in our own
 // queue (monitors see nothing, controls never move). Drain manually.

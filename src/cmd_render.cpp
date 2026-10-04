@@ -205,7 +205,7 @@ int runRender(const juce::var& args)
                               e0["click"].isObject() &&
                               e0["click"].hasProperty("x");
             if (jstr(e0, "click").isNotEmpty() || coordClick ||
-                jstr(e0, "shot").isNotEmpty()) {
+                jstr(e0, "shot").isNotEmpty() || e0.hasProperty("slider")) {
               wantGui = true;
               break;
             }
@@ -276,8 +276,8 @@ int runRender(const juce::var& args)
     size_t n = ch[0].size();
     std::vector<std::vector<float>> out(nCh, std::vector<float>(n, 0));
     juce::String shotSaved, shotWhy;
-    juce::Array<juce::var> shotsArr, clicksArr;
-    bool hasEntryShot = false, hasEntryClick = false;
+    juce::Array<juce::var> shotsArr, clicksArr, slidersArr;
+    bool hasEntryShot = false, hasEntryClick = false, hasEntrySlider = false;
     if (bypass) {
       out = ch;
     } else {
@@ -295,6 +295,9 @@ int runRender(const juce::var& args)
         juce::String click;
         bool clickIsCoord = false;
         double clickX = 0, clickY = 0;
+        juce::String sliderTarget;  // AX slider set (grant-free, headless)
+        double sliderValue = 0;
+        bool hasSlider = false;
       };
       std::vector<Ev> evs;
       if (auto* tl = args["timeline"].getArray()) {
@@ -315,13 +318,37 @@ int runRender(const juce::var& args)
           }
           double clickX = clickIsCoord ? (double)e["click"]["x"] : 0;
           double clickY = clickIsCoord ? (double)e["click"]["y"] : 0;
-          if (!map.isObject()) {
-            if (jstr(e, "click").isEmpty() && !clickIsCoord &&
-                jstr(e, "shot").isEmpty()) {
-              emitErr(errObj("ARGS", "render: timeline entry needs {atMs,params}"));
+          // Slider set: widget-level control for param-less sliders
+          // (grant-free AX value, headless-safe — unlike HID drag).
+          bool hasSlider = e.hasProperty("slider") && e["slider"].isObject();
+          juce::String sliderTarget;
+          double sliderValue = 0;
+          if (e.hasProperty("slider") && !hasSlider) {
+            emitErr(errObj("ARGS", "render: timeline slider needs "
+                                       "{target,value} (value in native units, "
+                                       "snapshot shows current)"));
+            return 1;
+          }
+          if (hasSlider) {
+            sliderTarget = jstr(e["slider"], "target");
+            auto sv = e["slider"]["value"];
+            if (sliderTarget.isEmpty() || (!sv.isDouble() && !sv.isInt())) {
+              emitErr(errObj("ARGS", "render: timeline slider needs "
+                                         "{target,value} (value in native "
+                                         "units, snapshot shows current)"));
               return 1;
             }
-            map = juce::var(new juce::DynamicObject());  // click/shot only
+            sliderValue = (double)sv;
+            hasEntrySlider = true;
+          }
+          if (!map.isObject()) {
+            if (jstr(e, "click").isEmpty() && !clickIsCoord &&
+                jstr(e, "shot").isEmpty() && !hasSlider) {
+              emitErr(errObj("ARGS", "render: timeline entry needs "
+                                         "{atMs,params} (or click/shot/slider)"));
+              return 1;
+            }
+            map = juce::var(new juce::DynamicObject());  // click/shot/slider only
           }
           if (juce::String u = unknownTargetIn(*inst, map); u.isNotEmpty()) {
             emitErr(errObj("ARGS", "render: timeline[" +
@@ -341,20 +368,25 @@ int runRender(const juce::var& args)
                                                "macOS-only"));
             return 1;
           }
+          if (hasSlider) {
+            emitErr(errObj("NO_OS_DRIVER", "render: timeline sliders are "
+                                               "macOS-only"));
+            return 1;
+          }
 #endif
           evs.push_back({f, atMs, map, eshot, eclick, clickIsCoord, clickX,
-                         clickY});
+                         clickY, sliderTarget, sliderValue, hasSlider});
           ++ti;
         }
         std::sort(evs.begin(), evs.end(),
                   [](const Ev& a, const Ev& b) { return a.frame < b.frame; });
       }
-      // Editor for mid-render shots/clicks/video: hidden unless visible.
-      // Only opened when captures or clicks were requested, so
+      // Editor for mid-render shots/clicks/sliders/video: hidden unless
+      // visible. Only opened when captures or clicks were requested, so
       // pure-headless renders stay byte-identical.
       if (guiOwned != nullptr && visEd == nullptr &&
           (wantVis || wantShot || hasEntryShot || hasEntryClick ||
-           videoP.isNotEmpty())) {
+           hasEntrySlider || videoP.isNotEmpty())) {
         juce::String why;
         visEd = openEditor(*guiOwned, wantVis, why);
         if (visEd == nullptr) {
@@ -364,12 +396,17 @@ int runRender(const juce::var& args)
         } else if (wantVis) {
           pumpMessages();  // let the fresh window paint before audio starts
         }
-      } else if (hasEntryClick && guiOwned == nullptr) {
+      } else if ((hasEntryClick || hasEntrySlider) && guiOwned == nullptr) {
         edWhy =
             "no GUI-backed instance (unsupported format or instantiate failed)";
       }
       if (hasEntryClick && visEd == nullptr) {
         emitErr(errObj("ARGS", "render: timeline clicks need a live editor "
+                               "window: " + edWhy));
+        return 1;
+      }
+      if (hasEntrySlider && visEd == nullptr) {
+        emitErr(errObj("ARGS", "render: timeline sliders need a live editor "
                                "window: " + edWhy));
         return 1;
       }
@@ -469,6 +506,36 @@ int runRender(const juce::var& args)
 #endif
             clicksArr.add(juce::var(k));
             pumpMessages();  // let the press dispatch before audio resumes
+          }
+          if (evs[ei].hasSlider) {
+            // Widget-level set on the live window (grant-free AX value, no
+            // HID): reaches sliders no param can touch, headless-safe.
+            auto* ks = new juce::DynamicObject();
+            ks->setProperty("atMs", evs[ei].atMs);
+#if JUCE_MAC
+            double actual = 0;
+            int src = plugprobeAxSetValueById(
+                evs[ei].sliderTarget.toRawUTF8(), visEd->getWindowHandle(),
+                evs[ei].sliderValue, &actual);
+            if (src <= 0) {
+              emitErr(errObj(src == 0 ? "ARGS" : "AX_SET",
+                             juce::String("render: timeline slider ") +
+                                 (src == 0 ? "unknown node '"
+                                           : "set failed on '") +
+                                 evs[ei].sliderTarget +
+                                 "' (snapshot lists ids)"));
+              return 1;
+            }
+            auto* ksc = new juce::DynamicObject();
+            ksc->setProperty("node", evs[ei].sliderTarget);
+            ksc->setProperty("set", evs[ei].sliderValue);
+            ksc->setProperty("state", actual);
+            ks->setProperty("slider", juce::var(ksc));
+#else
+            ks->setProperty("sliderSkipped", "no-editor-or-headless");
+#endif
+            slidersArr.add(juce::var(ks));
+            pumpMessages();  // let the set dispatch before audio resumes
           }
           if (evs[ei].shot.isNotEmpty()) {
             auto* s = new juce::DynamicObject();
@@ -600,6 +667,7 @@ int runRender(const juce::var& args)
     o->setProperty("tailNote", "in-aligned; flush tail appended at end");
     if (hasEntryShot) o->setProperty("shots", juce::var(shotsArr));
     if (hasEntryClick) o->setProperty("clicks", juce::var(clicksArr));
+    if (hasEntrySlider) o->setProperty("sliders", juce::var(slidersArr));
     o->setProperty("peakDb", peakDbOf(out));
     o->setProperty("hash", hashHex(out));
     if (!midiEvs.empty()) o->setProperty("midiEvents", (double)midiEvs.size());

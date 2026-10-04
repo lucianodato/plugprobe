@@ -21,12 +21,13 @@ void LowpassProcessor::prepareToPlay(double sr, int block) {
 void LowpassProcessor::processBlock(juce::AudioBuffer<float>& io, juce::MidiBuffer&) {
   juce::ScopedNoDenormals noDenormals;
   smooth.setTargetValue(cutoff->get());
+  float tr = trim.load();  // param-less: stepped per block, fine for a fixture
   int n = io.getNumSamples(), nCh = io.getNumChannels();
   for (int i = 0; i < n; ++i) {
     filter.setCutoffFrequency(smooth.getNextValue());
     for (int c = 0; c < nCh; ++c) {
       float x = io.getSample(c, i);
-      float y = filter.processSample(c, x);
+      float y = filter.processSample(c, x) * tr;
       io.setSample(c, i, y);
       if (c == 0 && fifoPos < fftSize) fifo[(size_t)fifoPos++] = y;
     }
@@ -194,14 +195,39 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
     val.setColour(juce::Label::textColourId, kLegend);
     val.setJustificationType(juce::Justification::right);
     addAndMakeVisible(val);
+    tcap.setText("TRIM", juce::dontSendNotification);
+    tcap.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    tcap.setColour(juce::Label::textColourId, kLegend);
+    addAndMakeVisible(tcap);
+    tval.setFont(juce::FontOptions(12.0f, juce::Font::bold));
+    tval.setColour(juce::Label::textColourId, kLegend);
+    tval.setJustificationType(juce::Justification::right);
+    addAndMakeVisible(tval);
+    trimSl.setSliderStyle(juce::Slider::LinearHorizontal);
+    trimSl.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    trimSl.setRange(0, 2);
+    trimSl.setValue(1.0, juce::dontSendNotification);
+    trimSl.setName("Trim");  // stable AX node id (AXSlider:Trim)
+    trimSl.setTitle("Trim");
+    trimSl.setLookAndFeel(&lnf);
+    trimSl.setColour(juce::Slider::rotarySliderFillColourId, kAmber);
+    trimSl.onValueChange = [this] {
+      proc.trim.store((float)trimSl.getValue());
+    };
+    addAndMakeVisible(trimSl);
+    tval.setText("1.00x", juce::dontSendNotification);
+    val.setText(hzText(20000.f), juce::dontSendNotification);
     foot.setText("cutoff sweep test fixture", juce::dontSendNotification);
     foot.setFont(juce::FontOptions(12.0f, juce::Font::plain));
     foot.setColour(juce::Label::textColourId, kFooter);
     addAndMakeVisible(foot);
     startTimerHz(30);  // reflect automated (param-plane) moves on screen
-    setSize(480, 340);
+    setSize(480, 390);
   }
-  ~LowpassEditor() override { cutoff.setLookAndFeel(nullptr); }
+  ~LowpassEditor() override {
+    cutoff.setLookAndFeel(nullptr);
+    trimSl.setLookAndFeel(nullptr);
+  }
   void paint(juce::Graphics& g) override {
     g.fillAll(kPanelBg);
     g.setColour(kPanelBorder);
@@ -214,6 +240,11 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
       cutoff.setValue(hz, juce::dontSendNotification);
       val.setText(hzText(hz), juce::dontSendNotification);
     }
+    float tr = proc.trim.load();
+    if (std::abs(tr - (float)trimSl.getValue()) > 0.001) {
+      trimSl.setValue(tr, juce::dontSendNotification);
+      tval.setText(juce::String(tr, 2) + "x", juce::dontSendNotification);
+    }
   }
   void resized() override {
     brand.setBounds(12, 8, 300, 28);
@@ -221,6 +252,9 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
     cap.setBounds(12, 258, 70, 20);
     val.setBounds(getWidth() - 112, 258, 100, 20);
     cutoff.setBounds(86, 282, getWidth() - 98, 24);
+    tcap.setBounds(12, 310, 70, 20);
+    tval.setBounds(getWidth() - 112, 310, 100, 20);
+    trimSl.setBounds(86, 334, getWidth() - 98, 24);
     foot.setBounds(12, getHeight() - 24, getWidth() - 24, 20);
   }
 
@@ -228,8 +262,8 @@ class LowpassEditor : public juce::AudioProcessorEditor, private juce::Timer {
   LowpassProcessor& proc;
   FixtureLookAndFeel lnf;
   Spectrum spec;
-  juce::Label brand, cap, val, foot;
-  juce::Slider cutoff;
+  juce::Label brand, cap, val, tcap, tval, foot;
+  juce::Slider cutoff, trimSl;
 };
 }  // namespace
 

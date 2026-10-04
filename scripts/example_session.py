@@ -60,8 +60,51 @@ def main():
                 {"session": ses, "at_ms": 500 * (i + 1),
                  "params": {"Cutoff": norm}})
         assert r["ok"], (hz, r)
+    # Param-less Trim (invisible to params-plane): widget-level slider sets.
+    # macOS: grant-free AX, headless-safe, replayed into the take. Elsewhere
+    # the same calls must fail loud (NO_OS_DRIVER), never silently pass.
+    mac = sys.platform == "darwin"
+    trim_ev = {"target": "AXSlider:Trim", "value": 0.5}
+    if mac:
+        # Detached first, then replayed in the take.
+        d = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
+                               "action": {"target": "AXSlider:Trim",
+                                          "op": "set", "value": 1.5}})
+        assert d["ok"], d
+        assert abs(d["data"]["results"][0]["state"] - 1.5) < 1e-6, d
+        for ms, v in ((3000, 0.5), (3500, 2.0)):
+            r = run(a.bin, "session-act",
+                    {"session": ses, "at_ms": ms,
+                     "slider": {"target": "AXSlider:Trim", "value": v}})
+            assert r["ok"], (ms, v, r)
+    else:
+        r = run(a.bin, "act", {"plugin": a.plugin, "via": "os",
+                               "action": {"target": "AXSlider:Trim",
+                                          "op": "set", "value": 1.5}})
+        assert r["error"]["code"] == "NO_OS_DRIVER", r
+        r = run(a.bin, "session-act",
+                {"session": ses, "at_ms": 3000, "slider": trim_ev})
+        assert r["error"]["code"] == "NO_OS_DRIVER", r
     st = run(a.bin, "session-stop", {"session": ses})
     assert st["ok"], st
+    if mac:
+        log = st["data"]["eventLog"]
+        assert any(e.get("slider", {}).get("target") == "AXSlider:Trim"
+                   for e in log), log
+        # Audio proof the replayed set lands: mute the whole take via timeline.
+        mute = run(a.bin, "render",
+                   {"plugin": a.plugin, "in": loop,
+                    "out": os.path.join(a.out, "mute.wav"), "tail_ms": 0,
+                    "timeline": [{"atMs": 0, "slider": {"target": "AXSlider:Trim",
+                                                       "value": 0.0}}]})
+        assert mute["ok"], mute
+        assert mute["data"]["peakDb"] <= -100, mute  # default trim=1 is loud
+    else:
+        r = run(a.bin, "render",
+                {"plugin": a.plugin, "in": loop,
+                 "out": os.path.join(a.out, "mute.wav"), "tail_ms": 0,
+                 "timeline": [{"atMs": 0, "slider": trim_ev}]})
+        assert r["error"]["code"] == "NO_OS_DRIVER", r
 
     c = run(a.bin, "compare", {"a": loop, "b": take})
     assert c["ok"], c

@@ -30,6 +30,13 @@ bool plugprobeShowFront(void* nsView);
 std::vector<PlugprobeAxNode> plugprobeAxDump(void* nsView);
 int plugprobeAxPressById(const char* nodeId, void* nsView, double* cx,
                          double* cy);
+// Slider set without HID: grant-free (own-process AX), headless-safe.
+// value is in the control's NATIVE units (snapshot shows the current one;
+// manuals give the range) — normalized mapping would be a guess when the
+// control hides min/max, so there is none. Returns 1 set (re-read into
+// actual) / 0 unknown id / -1 fail.
+int plugprobeAxSetValueById(const char* nodeId, void* nsView, double value,
+                            double* actual);
 // Raw screen-coordinate click (mouse space, top-left) for AX-empty
 // custom-painted editors: grounded by a visible screenshot, flagged fragile.
 bool plugprobeAxClickAt(double x, double y);
