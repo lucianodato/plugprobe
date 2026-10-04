@@ -9,6 +9,8 @@ default (byte-identical renders); UI/visible/screenshot paths are opt-in.
 OS driver + capture are macOS-only today; Windows/Linux backends are
 compiled stubs that fail loud (`NO_OS_DRIVER`).
 
+Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
+
 ## Commands
 
 All commands: `plugprobe <cmd> --json <args.json>` →
