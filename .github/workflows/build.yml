@@ -52,7 +52,10 @@ jobs:
           OUT=$(file "$BIN")
           echo "$OUT"
           case "$OUT" in *x86_64*arm64*|*arm64*x86_64*) :;; *) exit 1;; esac
-          LEAKS=$(otool -L "$BIN" 2>/dev/null | tail -n +2 | grep -vE '^[[:space:]]*(/usr/lib|/System)' || true)
+          # otool -L on a fat binary prints per-arch "X (architecture N):"
+          # headers: only indented dylib lines count, and only non-system ones.
+          LEAKS=$(otool -L "$BIN" 2>/dev/null | grep -E '^[[:space:]]' \
+            | grep -vE '^[[:space:]]*(/usr/lib|/System)' || true)
           if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
           echo "[PASS] plugprobe (Universal x86_64+arm64, system deps only)"
 
