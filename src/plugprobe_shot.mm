@@ -9,9 +9,9 @@
 #include <sys/wait.h>
 
 // Force the host window front. plugprobe is a background CLI tool whose windows
-// AppKit would otherwise never order in; headed mode exists to be watched
-// (like headed Playwright focusing its browser), so this promotes the process
-// to a regular app and steals focus openly (a Dock icon appears for the run).
+// AppKit would otherwise never order in; headed mode exists to be watched,
+// so this promotes the process to a regular app and steals focus openly
+// (a Dock icon appears for the run).
 // Returns whether pixels can really reach the screen.
 bool plugprobeShowFront(void* nsView) {
   NSView* v = (NSView*)nsView;

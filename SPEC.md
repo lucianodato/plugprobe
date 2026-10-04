@@ -3,7 +3,7 @@
 Generic agent-driven plugin host: load any installed audio plugin
 (JUCE or not), drive it like an end user through real OS mouse/keyboard,
 tweak it live while audio runs, capture the result, diff inputs vs
-outputs. Playwright for audio plugins.
+outputs. Scripted, click-driven plugin testing — no DAW.
 
 ## 0. Feasibility verdict: YES, in three layers
 
@@ -12,8 +12,8 @@ outputs. Playwright for audio plugins.
   offline. No DAW. Covers regression checks, not realism.
 - **OS input driver (generic UI path):** synthetic OS-level mouse/keyboard —
   macOS CGEvent, Windows SendInput, Linux XTest — clicks the real editor
-  window like a user. Works for ANY plugin framework (JUCE, iZotope,
-  FabFilter…), including non-automatable controls (Learn buttons) that
+  window like a user. Works for ANY plugin framework (JUCE or proprietary),
+  including non-automatable controls (Learn buttons) that
   params can never reach. Proven in miniature by
   `rx-ab-study/host/click.swift`; this spec promotes that hack to a proper
   cross-platform driver with window focus, node→screen mapping, and action
@@ -133,7 +133,7 @@ over shell. Input schema = CLI args JSON; output = CLI stdout JSON.
   on-demand blobs); a scripted A/B (scan→render×2→compare) targets ≤10 tool
   calls total.
 
-## 5. UI snapshot schema (minimal Playwright-DOM analog)
+## 5. UI snapshot schema (minimal DOM analog)
 
 ```json
 {"id":"n12","role":"slider|button|combo|label","name":"Reduction",
@@ -161,7 +161,7 @@ reusable `ui_script` — the rx-ab-study hardcoded-coords failure, fixed.
 - Audio thread never allocates/locks/does I/O (workspace RT rule); meter
   taps use lock-free ring buffers; GUI/OS-input runs on the message thread.
 
-### CI (GitHub Actions end-to-end, Playwright-style)
+### CI (GitHub Actions end-to-end)
 
 - `plugprobe` runs headless in CI: offline `render`/`compare`/`probe` need no
   display; editor-dependent `snapshot`/`act` run under `xvfb` (Linux) or the
@@ -169,7 +169,7 @@ reusable `ui_script` — the rx-ab-study hardcoded-coords failure, fixed.
   plane where OS grants can't exist — no interactive permission prompts in CI.
 - Deterministic: fixed `--sr/--block`, golden WAV hashes with `--tol_db`,
   `matrix.csv` + takes uploaded as workflow artifacts.
-- Matrix strategy mirrors Playwright projects: `os × format` (VST3/AU/LV2),
+- Matrix strategy: `os × format` (VST3/AU/LV2),
   `test-feature`/`probe` suites as the test files, via a `setup-plugprobe`
   GitHub Action so downstream plugin repos get e2e with a one-job snippet.
 
@@ -236,7 +236,7 @@ No REAPER.
 1. **M0 spike (1–2 days):** JUCE CLI `scan|inspect|render` for one VST3 +
    golden null-test. Proves the 95% path.
 2. **M1 OS driver (native, no new deps):** `snapshot|act|screenshot` via
-   hand-rolled OS events on a NON-JUCE plugin (e.g. RX Voice De-noise):
+   hand-rolled OS events on a NON-JUCE plugin (e.g. a proprietary denoiser):
    focus window, full-role AX/UIA dump, click Learn by node id, assert
    `uiOnly` + recorded effect. PyAutoGUI consulted as API reference and
    differential test oracle only. Kills the rx-ab-study fragility (coords,

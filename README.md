@@ -27,8 +27,7 @@ they fail loud instead of pretending. The scripted equivalent is one
 
 Screenshots only on request (`shot`/`shotAfter`); blank (Metal/async)
 captures are reported, never written. `visible:true` opens a real
-on-screen window (Dock icon, steals focus — headed mode, like headed
-Playwright).
+on-screen window (Dock icon, steals focus — headed mode).
 
 ## Examples
 
@@ -36,15 +35,15 @@ Playwright).
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j4
 BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe
 
-echo '{"plugin":"Noise Repellent Live"}' > /tmp/insp.json
+echo '{"plugin":"Example Plugin"}' > /tmp/insp.json
 $BIN inspect --json /tmp/insp.json
 
 # headed: snapshot with live window + screenshot
-echo '{"plugin":"RX 10 Voice De-noise","limit":50,"visible":true,"holdMs":500,"shot":"/tmp/rx.png"}' > /tmp/snap.json
+echo '{"plugin":"Example Denoiser","limit":50,"visible":true,"holdMs":500,"shot":"/tmp/shot.png"}' > /tmp/snap.json
 $BIN snapshot --json /tmp/snap.json
 
-# learn-freeze render: click Learn at t=0 on the rendering instance
-echo '{"plugin":"Noise Repellent Live","in":"in.wav","out":"out.wav",
+# learn-freeze render: click the Learn button at t=0 on the rendering instance
+echo '{"plugin":"Example Denoiser","in":"in.wav","out":"out.wav",
   "timeline":[{"atMs":0,"click":"AXButton:Learn"}]}' > /tmp/ren.json
 $BIN render --json /tmp/ren.json
 

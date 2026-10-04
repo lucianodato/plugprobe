@@ -288,7 +288,7 @@ juce::AudioProcessorEditor* openEditor(juce::AudioPluginInstance& gui,
     return nullptr;
   }
 #if JUCE_MAC
-  // Let asynchronously-built views (iZotope et al.) populate before the
+  // Let asynchronously-built third-party views populate before the
   // caller walks/captures: attach, first paint and AX registration settle here.
   holdUi(400);
   if (onscreen) {
@@ -1850,11 +1850,10 @@ int main(int argc, char** argv) {
                    cmd + ": no live session in M0+M3 (cannot host an editor "
                          "on a rendering instance with audio running). "
                          "Interim click path: render timeline automating "
-                         "Learn on one instance, e.g. timeline "
+                         "a toggle on one instance, e.g. timeline "
                          "[{atMs:0,params:{6:1}},{atMs:8000,params:{6:0}}] "
-                         "for installed Noise Repellent Live (Learn is "
-                         "automatable param 6), or timeline clicks "
-                         "[{atMs:0,click:'AXButton:Learn'}] for native "
+                         "for an automatable switch, or timeline clicks "
+                         "[{atMs:0,click:'<node-id>'}] for native "
                          "buttons no param can reach (snapshot lists ids); "
                          "verify the UI with shot"));
     return 1;
