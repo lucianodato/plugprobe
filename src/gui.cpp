@@ -5,7 +5,7 @@
 namespace pp {
 // --- Opt-in live UI (visible windows) + editor screenshots ---
 // Diagnostic-only: never fail the command; off by default (headless path is
-// byte-identical without them). macOS-only capture (plugprobe_os_mac.mm).
+// byte-identical without them). OS capture/input lives behind plugprobeOsCaps().
 bool guiCapable(const juce::PluginDescription& desc) {
   return desc.pluginFormatName.containsIgnoreCase("VST3") ||
          desc.pluginFormatName.containsIgnoreCase("AudioUnit");
@@ -14,13 +14,10 @@ bool guiCapable(const juce::PluginDescription& desc) {
 std::unique_ptr<juce::AudioPluginInstance> guiCreate(
     const juce::PluginDescription& desc, double sr, int block,
     juce::String& e) {
-#if !JUCE_MAC
-  (void)desc;
-  (void)sr;
-  (void)block;
-  (void)e;
-  return nullptr;
-#else
+  if (!plugprobeOsCaps().editor) {
+    e = "NO_OS_DRIVER";  // no editor driver: never open a window without one
+    return nullptr;
+  }
   // GUI VST3/AU formats derive from their headless bases, so they register
   // into the same manager; sync create stays on the message thread (here: main).
   // ponytail: intentionally leaked; a static destructor would unload plugin
@@ -30,12 +27,13 @@ std::unique_ptr<juce::AudioPluginInstance> guiCreate(
   static bool ginit = false;
   if (!ginit) {
     gm->addFormat(std::make_unique<juce::VST3PluginFormat>());
+#if JUCE_MAC
     gm->addFormat(std::make_unique<juce::AudioUnitPluginFormat>());
+#endif
     ginit = true;
   }
   return std::unique_ptr<juce::AudioPluginInstance>(
       gm->createPluginInstance(desc, sr, block, e));
-#endif
 }
 // Open the instance's editor: centered onscreen (visible mode) or far
 // offscreen (shot-only: attach + paint run, nothing flashes). Returns editor
@@ -77,7 +75,6 @@ juce::AudioProcessorEditor* openEditor(juce::AudioPluginInstance& gui,
     why = "no-peer";
     return nullptr;
   }
-#if JUCE_MAC
   // Let asynchronously-built third-party views populate before the
   // caller walks/captures: attach, first paint and AX registration settle here.
   holdUi(400);
@@ -90,21 +87,14 @@ juce::AudioProcessorEditor* openEditor(juce::AudioPluginInstance& gui,
       return nullptr;
     }
   }
-#endif
   return ed;
 }
-// Keep a visible window live for holdMs (macOS pumps + drains AppKit event
-// delivery; elsewhere sleeps).
+// Keep a visible window live for holdMs, pumping the native event loop.
 void holdUi(int holdMs) {
   if (holdMs <= 0) return;
-#if JUCE_MAC
   double end = juce::Time::getMillisecondCounterHiRes() + holdMs;
   while (juce::Time::getMillisecondCounterHiRes() < end) plugprobePumpApp(0.05);
-#else
-  juce::Thread::sleep(holdMs);
-#endif
 }
-#if JUCE_MAC
 // Map capture result to saved-path-or-why. 1 ok / 0 fail / -1 blank view.
 bool noteCapture(int rc, const juce::String& path, juce::String& saved,
                  juce::String& why) {
@@ -120,7 +110,6 @@ bool noteCapture(int rc, const juce::String& path, juce::String& saved,
   }
   return false;
 }
-#endif
 // Full shot flow on a fresh GUI instance. Capture and display failures are
 // tracked separately: a blank (Metal/async) capture must never cancel the
 // on-screen window (it still grounds coordinate clicks for AX-empty editors).
@@ -131,12 +120,11 @@ juce::String saveEditorShot(const juce::PluginDescription& desc, double sr,
   shotWhy = {};
   visWhy = {};
   if (path.isEmpty() && !visible) return {};
-#if !JUCE_MAC
-  (void)desc;
-  (void)sr;
-  (void)block;
-  return {};
-#else
+  if (!plugprobeOsCaps().editor) {
+    if (path.isNotEmpty()) shotWhy = "NO_OS_DRIVER";
+    if (visible) visWhy = "NO_OS_DRIVER";
+    return {};
+  }
   if (!guiCapable(desc)) {
     if (path.isNotEmpty()) shotWhy = "unsupported-format";  // LV2/etc
     if (visible) visWhy = "unsupported-format";
@@ -167,10 +155,8 @@ juce::String saveEditorShot(const juce::PluginDescription& desc, double sr,
   if (visible) holdUi(holdMs);
   if (ed->isOnDesktop()) ed->removeFromDesktop();
   return saved;
-#endif
 }
 
-#if JUCE_MAC
 // Smallest AX node containing a screen point: tells a raw {x,y} click what it
 // hit (or that the tree is empty there). Null var when nothing contains it.
 juce::var hitNodeAt(void* hv, double x, double y) {
@@ -194,10 +180,7 @@ juce::var hitNodeAt(void* hv, double x, double y) {
   if (!hit->value.empty()) m->setProperty("state", juce::String(hit->value));
   return juce::var(m);
 }
-#endif
 
-
-#if JUCE_MAC
 // Poll the AX tree until a node id appears (or timeout): third-party views
 // attach asynchronously after addToDesktop, so a single synchronous dump
 // races them — especially cold in CI. Pumps both runloops while waiting.
@@ -222,5 +205,4 @@ bool axWaitForId(void* hv, const juce::String& nodeId, int timeoutMs) {
   }
   return false;
 }
-#endif
 }  // namespace pp

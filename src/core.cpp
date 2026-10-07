@@ -1,6 +1,7 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // core.cpp: shared backend implementation. See core.h.
 #include "core.h"
+#include "plugprobe_os.h"
 
 #include <algorithm>
 #include <cmath>
@@ -309,25 +310,27 @@ double clampd(double x, double lo, double hi) {
 // slower than realtime.
 void paceToRealtime(double t0ms, size_t doneFrames, double sr) {
   double target = t0ms + doneFrames / sr * 1000.0;
-#if JUCE_MAC
   for (;;) {
     double left = target - juce::Time::getMillisecondCounterHiRes();
     if (left <= 0) break;
+#if JUCE_MAC
     CFRunLoopRunInMode(kCFRunLoopDefaultMode, std::min(left / 1000.0, 0.05),
                        false);
-  }
 #else
-  double left = target - juce::Time::getMillisecondCounterHiRes();
-  if (left > 0) juce::Thread::sleep((int)left);
+    plugprobePumpApp(std::min(left / 1000.0, 0.05));
 #endif
+  }
 }
 
 // Flush plugin-side deferred (AsyncUpdater) param updates during offline renders.
 // Headless render loops never re-enter the event loop, so mid-render timeline
 // switches would otherwise sit in the plugin's message queue forever.
 void pumpMessages() {
+  if (!plugprobeOsCaps().editor) return;
 #if JUCE_MAC
   CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.005, false);
+#else
+  plugprobePumpApp(0.005);
 #endif
 }
 

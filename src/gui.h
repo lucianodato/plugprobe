@@ -13,17 +13,13 @@ std::unique_ptr<juce::AudioPluginInstance> guiCreate(
 juce::AudioProcessorEditor* openEditor(juce::AudioPluginInstance& gui,
                                        bool onscreen, juce::String& why);
 void holdUi(int holdMs);
-#if JUCE_MAC
 bool noteCapture(int rc, const juce::String& path, juce::String& saved,
                  juce::String& why);
-#endif
 juce::String saveEditorShot(const juce::PluginDescription& desc, double sr,
                             int block, const juce::String& path,
                             juce::String& shotWhy, juce::String& visWhy,
                             bool visible, int holdMs);
 juce::var hitNodeAt(void* hv, double x, double y);
-#if JUCE_MAC
 // Poll the AX tree until a node id appears (or timeout); see gui.cpp.
 bool axWaitForId(void* hv, const juce::String& nodeId, int timeoutMs);
-#endif
 }  // namespace pp

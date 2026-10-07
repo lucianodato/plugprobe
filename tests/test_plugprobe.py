@@ -5,6 +5,7 @@ import math
 import os
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 import wave
@@ -307,6 +308,16 @@ class Contract(unittest.TestCase):
         self.assertEqual(s["error"]["code"], "NOT_FOUND")
         s, _ = run("snapshot", {"limit": 10, "offset": 0})
         self.assertEqual(s["error"]["code"], "ARGS")
+
+    def test_os_driver_gate_off_macos(self):
+        plugin = os.environ.get("PLUGPROBE_TEST_PLUGIN", "")
+        if not BIN or not plugin or sys.platform == "darwin":
+            self.skipTest("needs PLUGPROBE_TEST_PLUGIN on a non-macOS host")
+        s, _ = run("snapshot", {"plugin": plugin, "limit": 10})
+        self.assertEqual(s["error"]["code"], "NO_OS_DRIVER")
+        out, _ = run("act", {"plugin": plugin, "via": "os",
+                             "action": {"target": "AXButton:Learn"}})
+        self.assertEqual(out["error"]["code"], "NO_OS_DRIVER")
 
 
 if __name__ == "__main__":

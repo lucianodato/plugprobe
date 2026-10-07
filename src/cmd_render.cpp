@@ -38,11 +38,9 @@ int runRender(const juce::var& args)
     bool wantVis = (bool)args["visible"];
     juce::String videoP = jstr(args, "video");
     // Frame-grab video works headless (no grant, no visible window).
-    if (videoP.isNotEmpty()) {
-#if !JUCE_MAC
+    if (videoP.isNotEmpty() && !plugprobeOsCaps().record) {
       // Diagnostic-only like shots: the take still succeeds with videoSkipped.
-      vidWhy = "macOS-only (NO_OS_DRIVER); take unaffected";
-#endif
+      vidWhy = "NO_OS_DRIVER (no screen recorder on this OS); take unaffected";
     }
     // Preset files (presets/*.json) load before plugin lookup so a missing
     // or malformed preset is ARGS anywhere — never a silent dry render.
@@ -195,9 +193,7 @@ int runRender(const juce::var& args)
       // meters, real clicks). The default path stays headless (byte-identical).
       // Timeline entries are pre-scanned: the full parse happens later.
       bool wantGui = wantShot || wantVis;
-#if JUCE_MAC
-      wantGui = wantGui || videoP.isNotEmpty();
-#endif
+      wantGui = wantGui || (videoP.isNotEmpty() && plugprobeOsCaps().record);
       if (!wantGui) {
         if (auto* tl0 = args["timeline"].getArray()) {
           for (auto& e0 : *tl0) {
@@ -362,18 +358,20 @@ int runRender(const juce::var& args)
           juce::String eclick = clickIsCoord ? juce::String("") : jstr(e, "click");
           if (eshot.isNotEmpty()) hasEntryShot = true;
           if (eclick.isNotEmpty() || clickIsCoord) hasEntryClick = true;
-#if !JUCE_MAC
-          if (eclick.isNotEmpty() || clickIsCoord) {
-            emitErr(errObj("NO_OS_DRIVER", "render: timeline clicks are "
-                                               "macOS-only"));
+          const auto caps = plugprobeOsCaps();
+          if ((eclick.isNotEmpty() || clickIsCoord) &&
+              !(caps.editor && caps.tree && caps.input)) {
+            emitErr(errObj("NO_OS_DRIVER", "render: timeline clicks need the "
+                                               "OS UI driver, unavailable on "
+                                               "this OS"));
             return 1;
           }
-          if (hasSlider) {
-            emitErr(errObj("NO_OS_DRIVER", "render: timeline sliders are "
-                                               "macOS-only"));
+          if (hasSlider && !(caps.editor && caps.tree)) {
+            emitErr(errObj("NO_OS_DRIVER", "render: timeline sliders need the "
+                                               "OS UI driver, unavailable on "
+                                               "this OS"));
             return 1;
           }
-#endif
           evs.push_back({f, atMs, map, eshot, eclick, clickIsCoord, clickX,
                          clickY, sliderTarget, sliderValue, hasSlider});
           ++ti;
@@ -413,8 +411,7 @@ int runRender(const juce::var& args)
       // Opt-in screen recording: captures the live window for the whole
       // paced pass; the take WAV is muxed in as audio when it lands.
       // Diagnostic-only (like shots): a dead recorder never fails the take.
-      if (videoP.isNotEmpty()) {
-#if JUCE_MAC
+      if (videoP.isNotEmpty() && plugprobeOsCaps().record) {
         if (visEd == nullptr) {
           vidWhy = edWhy.isNotEmpty() ? edWhy : "no-editor";
         } else {
@@ -422,7 +419,6 @@ int runRender(const juce::var& args)
           vidRec = plugprobeScreenRecStart(visEd->getWindowHandle(), ve);
           if (vidRec == nullptr) vidWhy = juce::String(ve);
         }
-#endif
       }
       size_t ei = 0, bc = 0;
       juce::AudioBuffer<float> blk(std::max(2, nCh), block);
@@ -438,7 +434,6 @@ int runRender(const juce::var& args)
             // Native click on the live window (buttons no param can reach).
             auto* k = new juce::DynamicObject();
             k->setProperty("atMs", evs[ei].atMs);
-#if JUCE_MAC
             if (evs[ei].clickIsCoord) {
               // HID click: needs the on-screen window + Accessibility grant.
               if (!wantVis) {
@@ -448,7 +443,7 @@ int runRender(const juce::var& args)
                                        "clicks work headless via AX)"));
                 return 1;
               }
-              if (!AXIsProcessTrusted()) {
+              if (!plugprobeInputGranted()) {
                 emitErr(errObj("AX_UNTRUSTED",
                                "render: timeline coordinate clicks need the "
                                "Accessibility grant for THIS plugprobe binary"));
@@ -490,7 +485,6 @@ int runRender(const juce::var& args)
             kp->setProperty("x", cx);
             kp->setProperty("y", cy);
             kc->setProperty("center", juce::var(kp));
-#if JUCE_MAC
             for (auto& nn : plugprobeAxDump(visEd->getWindowHandle())) {
               if (juce::String(nn.id) == evs[ei].click) {
                 if (!nn.value.empty())
@@ -498,12 +492,8 @@ int runRender(const juce::var& args)
                 break;
               }
             }
-#endif
             k->setProperty("click", juce::var(kc));
             }
-#else
-            k->setProperty("clickSkipped", "no-editor-or-headless");
-#endif
             clicksArr.add(juce::var(k));
             pumpMessages();  // let the press dispatch before audio resumes
           }
@@ -513,7 +503,6 @@ int runRender(const juce::var& args)
             // the node instead of racing it.
             auto* ks = new juce::DynamicObject();
             ks->setProperty("atMs", evs[ei].atMs);
-#if JUCE_MAC
             double actual = 0;
             juce::String serr;
             if (!axWaitForId(visEd->getWindowHandle(), evs[ei].sliderTarget,
@@ -536,9 +525,6 @@ int runRender(const juce::var& args)
             ksc->setProperty("set", evs[ei].sliderValue);
             ksc->setProperty("state", actual);
             ks->setProperty("slider", juce::var(ksc));
-#else
-            ks->setProperty("sliderSkipped", "no-editor-or-headless");
-#endif
             slidersArr.add(juce::var(ks));
             pumpMessages();  // let the set dispatch before audio resumes
           }
@@ -546,18 +532,18 @@ int runRender(const juce::var& args)
             auto* s = new juce::DynamicObject();
             s->setProperty("atMs", evs[ei].atMs);
             if (visEd != nullptr) {
-#if JUCE_MAC
-              juce::String saved, why;
-              if (noteCapture(plugprobeSaveNSViewShot(visEd->getWindowHandle(),
-                                                  evs[ei].shot.toRawUTF8(),
-                                                  nullptr, nullptr),
-                              evs[ei].shot, saved, why))
-                s->setProperty("screenshot", saved);
-              else
-                s->setProperty("shotSkipped", why);
-#else
-              s->setProperty("shotSkipped", "no-editor-or-headless");
-#endif
+              if (!plugprobeOsCaps().editor) {
+                s->setProperty("shotSkipped", "NO_OS_DRIVER");
+              } else {
+                juce::String saved, why;
+                if (noteCapture(plugprobeSaveNSViewShot(visEd->getWindowHandle(),
+                                                    evs[ei].shot.toRawUTF8(),
+                                                    nullptr, nullptr),
+                                evs[ei].shot, saved, why))
+                  s->setProperty("screenshot", saved);
+                else
+                  s->setProperty("shotSkipped", why);
+              }
             } else {
               s->setProperty("shotSkipped",
                              visWhy.isNotEmpty() ? visWhy : "no-editor");
@@ -624,13 +610,13 @@ int runRender(const juce::var& args)
           }
         }
         if (visEd != nullptr && rsp.isNotEmpty()) {
-#if JUCE_MAC
-          noteCapture(plugprobeSaveNSViewShot(visEd->getWindowHandle(),
-                                          rsp.toRawUTF8(), nullptr, nullptr),
-                      rsp, shotSaved, shotWhy);
-#else
-          shotWhy = "no-editor-or-headless";
-#endif
+          if (!plugprobeOsCaps().editor) {
+            shotWhy = "NO_OS_DRIVER";
+          } else {
+            noteCapture(plugprobeSaveNSViewShot(visEd->getWindowHandle(),
+                                            rsp.toRawUTF8(), nullptr, nullptr),
+                        rsp, shotSaved, shotWhy);
+          }
         }
       } else if (rsp.isNotEmpty()) {
         juce::String why, visDummy;

@@ -760,3 +760,6 @@ bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
   }
   return true;
 }
+
+PlugprobeOsCaps plugprobeOsCaps() { return {true, true, true, true}; }
+bool plugprobeInputGranted() { return AXIsProcessTrusted(); }

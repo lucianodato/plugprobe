@@ -198,10 +198,12 @@ int runSessionAct(const juce::var& args) {
       emitErr(errObj("ARGS", "session act: bypass session has no editor"));
       return 1;
     }
-#if !JUCE_MAC
-    emitErr(errObj("NO_OS_DRIVER", "session act clicks are macOS-only"));
-    return 1;
-#else
+    const auto caps = plugprobeOsCaps();
+    if (!caps.editor || !caps.tree || !caps.input) {
+      emitErr(errObj("NO_OS_DRIVER", "session act clicks need the OS UI "
+                                     "driver, unavailable on this OS"));
+      return 1;
+    }
     juce::PluginDescription d;
     if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
         !guiCapable(d)) {
@@ -256,7 +258,6 @@ int runSessionAct(const juce::var& args) {
       ev->setProperty("fragile", true);
     }
     ev->setProperty("replayAtStop", true);
-#endif
   }
   if (args.hasProperty("slider") && !hasSlider) {
     emitErr(errObj("ARGS", "session act: slider needs {target,value} "
@@ -279,10 +280,12 @@ int runSessionAct(const juce::var& args) {
       emitErr(errObj("ARGS", "session act: bypass session has no editor"));
       return 1;
     }
-#if !JUCE_MAC
-    emitErr(errObj("NO_OS_DRIVER", "session act sliders are macOS-only"));
-    return 1;
-#else
+    const auto caps = plugprobeOsCaps();
+    if (!caps.editor || !caps.tree) {
+      emitErr(errObj("NO_OS_DRIVER", "session act sliders need the OS UI "
+                                     "driver, unavailable on this OS"));
+      return 1;
+    }
     juce::PluginDescription d;
     if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
         !guiCapable(d)) {
@@ -316,7 +319,6 @@ int runSessionAct(const juce::var& args) {
     se->setProperty("value", (double)sv);
     ev->setProperty("slider", juce::var(se));
     ev->setProperty("replayAtStop", true);
-#endif
   }
   auto* so = s.getDynamicObject();
   juce::Array<juce::var> events(*s["events"].getArray());

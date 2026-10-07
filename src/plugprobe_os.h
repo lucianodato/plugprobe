@@ -20,6 +20,19 @@ struct PlugprobeAxNode {
   double x = 0, y = 0, w = 0, h = 0;  // screen space, top-left origin
 };
 
+// Driver features this OS backend provides. Callers check these and fail loud
+// (NO_OS_DRIVER) when one is false; they never silently succeed.
+struct PlugprobeOsCaps {
+  bool editor = false;  // ShowFront + editor shots (NSView / HWND / X11 window)
+  bool tree = false;    // AxDump / AxPressById / AxSetValueById
+  bool input = false;   // AxClickAt / AxDragAt / AxTypeText
+  bool record = false;  // ScreenRec*
+};
+PlugprobeOsCaps plugprobeOsCaps();
+// Synthetic input permission. macOS needs the Accessibility grant; ad-hoc
+// rebuilds change the binary hash and invalidate it, so check at runtime.
+bool plugprobeInputGranted();
+
 // --- Capture (opt-in `shot` PNGs; 1 ok / 0 fail / -1 blank) ---
 int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h);
 int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h);
@@ -47,11 +60,6 @@ void plugprobePumpApp(double seconds);
 // trust grant. Only call when the AX tree comes back empty — interactive
 // runs never touch it (no dock bounce, no focus steal).
 void plugprobeTryActivate();
-#if __APPLE__
-#include <ApplicationServices/ApplicationServices.h>  // AXIsProcessTrusted:
-// ad-hoc signatures change hash every rebuild, which invalidates the grant —
-// HID drag/type must check this at runtime.
-#endif
 
 // --- Screen recording (opt-in `video` on render; macOS only) ---
 // Frame-grab, not screen capture: the editor view renders itself into a

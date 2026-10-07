@@ -31,3 +31,6 @@ void plugprobeScreenRecGrab(void*) {}
 bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
   return false;
 }
+
+PlugprobeOsCaps plugprobeOsCaps() { return {}; }
+bool plugprobeInputGranted() { return true; }
