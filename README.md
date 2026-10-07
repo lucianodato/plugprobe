@@ -9,10 +9,10 @@ offline, diff the results. No DAW.
 Single JUCE/C++ CLI, no new dependencies. Headless by
 default (byte-identical renders); UI/visible/screenshot paths are opt-in.
 OS driver: macOS has the full set (AX tree, HID input, shots, video). Windows
-has tree (UI Automation), input and shots; Linux (X11) has input and shots.
-Video (AVI) and PNG shots are encoded in shared code, so every OS with a frame
-grab produces the same output. Anything a platform lacks fails loud with
-`NO_OS_DRIVER`. The Linux UI tree (AT-SPI) is still pending.
+has tree (UI Automation), input, shots and video; Linux (X11) has input, shots
+and video. Video (AVI) and PNG shots are encoded in shared code, so every OS
+with a frame grab produces the same output. Anything a platform lacks fails
+loud with `NO_OS_DRIVER`. The Linux UI tree (AT-SPI) is still pending.
 
 Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
 
@@ -67,9 +67,9 @@ for — no globs over temp dirs:
   with: {name: takes, path: renders/}
 ```
 
-`video` is frame-grabbed headless (no grant) on macOS; without a working
-encoder the take still succeeds with `videoSkipped`. Headless
-Linux/Windows jobs omit `video` (`NO_OS_DRIVER`).
+`video` is frame-grabbed without an accessibility grant on all three OSes;
+without a working frame grab or encoder the take still succeeds with
+`videoSkipped`.
 
 ## Examples
 

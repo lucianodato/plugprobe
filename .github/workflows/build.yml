@@ -149,10 +149,10 @@ jobs:
       - name: Example end-to-end (session, audio proof)
         run: |
           mkdir -p example-takes
-          python3 scripts/example_session.py \
+          xvfb-run -a python3 scripts/example_session.py \
             --bin $PWD/build/plugprobe_artefacts/Release/plugprobe \
             --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
-            --out example-takes
+            --out example-takes --require-video
 
       - uses: actions/upload-artifact@v4
         with:
@@ -229,7 +229,7 @@ jobs:
           python3 scripts/example_session.py \
             --bin $PWD/build/plugprobe_artefacts/Release/plugprobe.exe \
             --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
-            --out example-takes
+            --out example-takes --require-video
 
       - uses: actions/upload-artifact@v4
         with:
