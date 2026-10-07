@@ -69,6 +69,7 @@ if(UNIX AND NOT APPLE)
     find_package(X11 REQUIRED)
     find_library(XTEST_LIB Xtst REQUIRED)
     target_include_directories(plugprobe PRIVATE ${X11_INCLUDE_DIR})
+    target_compile_definitions(plugprobe PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(plugprobe PRIVATE ${X11_X11_LIB} ${XTEST_LIB})
 endif()
 target_link_libraries(plugprobe PRIVATE
