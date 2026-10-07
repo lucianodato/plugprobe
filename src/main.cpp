@@ -109,8 +109,14 @@ int main(int argc, char** argv) {
     std::printf("plugprobe %s\n", PLUGPROBE_VERSION);
     return 0;
   }
-  if (juce::SystemStats::getEnvironmentVariable("PLUGPROBE_CHILD", "0") ==
-      "0") {
+  bool jsonFromStdin = false;
+  for (int i = 2; i + 1 < argc; ++i)
+    if (juce::String(argv[i]) == "--json" && juce::String(argv[i + 1]) == "-")
+      jsonFromStdin = true;
+  // ponytail: piped JSON skips isolation; forward child stdin to isolate it.
+  if (!jsonFromStdin &&
+      juce::SystemStats::getEnvironmentVariable("PLUGPROBE_CHILD", "0") ==
+          "0") {
     int rc = runIsolated(argc, argv);
     if (rc >= 0) return rc;
   }
