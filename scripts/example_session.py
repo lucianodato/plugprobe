@@ -125,7 +125,7 @@ def main():
         assert os.path.exists(vid), "no video artifact"
         blob = open(vid, "rb").read()
         assert len(blob) > 50000, f"video too small ({len(blob)})"
-        assert b"vide" in blob and b"soun" in blob, "video lacks A/V tracks"
+        assert b"vids" in blob and b"auds" in blob, "video lacks A/V tracks"
     print(f"EXAMPLE_OK spectralDist={sd:.2f} take={take}"
           + (f" video={vid}" if a.require_video else ""))
 
