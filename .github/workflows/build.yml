@@ -121,7 +121,8 @@ jobs:
             build-essential cmake \
             libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
             libx11-dev libxtst-dev libxcomposite-dev libxcursor-dev libxext-dev \
-            libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev
+            libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev \
+            xvfb
 
       - name: Configure CMake
         run: |
@@ -139,9 +140,10 @@ jobs:
           if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
           echo "[PASS] plugprobe (static libgcc/libstdc++, desktop syslibs dynamic)"
 
-      - name: Contract Tests
+      - name: Contract Tests (under Xvfb, so the X11 driver is live)
         run: |
-          PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+          xvfb-run -a env PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+            PLUGPROBE_TEST_PLUGIN="$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
             python3 tests/test_plugprobe.py
 
       - name: Example end-to-end (session, audio proof)
