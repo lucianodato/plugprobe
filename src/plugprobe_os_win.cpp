@@ -1,36 +1,369 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
-// plugprobe_os_win.cpp: Windows OS backend (STUB — every function fails).
-// Real implementation needs OS APIs only (no new third-party deps):
-//   tree: UI Automation — IUIAutomation::ElementFromHandle on the hosted
-//     HWND, TreeWalker + Invoke/Value/RangeValue/Toggle patterns for
-//     press + post-press state re-read (Uiautomationcore, OS-provided).
-//   input: SendInput (MOUSEINPUT/KEYBDINPUT) after SetForegroundWindow;
-//     node->screen mapping via GetWindowRect (client space, like macOS).
-//   capture: PrintWindow with PW_RENDERFULLCONTENT, blank-grab rule as macOS.
-//   grants: none for own-user editor windows (UIPI integrity levels apply).
-// Until then callers fail loud with NO_OS_DRIVER, never silent no-ops.
+// plugprobe_os_win.cpp: Windows OS backend. Tree: UI Automation (ElementFromHandle,
+// Invoke / RangeValue patterns). Input: SendInput (mouse + unicode keys).
+// Capture: PrintWindow(PW_RENDERFULLCONTENT) encoded to PNG via GDI+.
+// Recording is not implemented yet (record=false: videos are skipped loudly).
 #include "plugprobe_os.h"
 
-int plugprobeSaveNSViewShot(void*, const char*, int*, int*) { return 0; }
-int plugprobeSaveWindowShot(void*, const char*, int*, int*) { return 0; }
-bool plugprobeShowFront(void*) { return false; }
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <gdiplus.h>
+#include <objbase.h>
+#include <oleauto.h>
+#include <UIAutomation.h>
+#include <wrl/client.h>
 
-std::vector<PlugprobeAxNode> plugprobeAxDump(void*) { return {}; }
-int plugprobeAxPressById(const char*, void*, double*, double*) { return -1; }
-int plugprobeAxSetValueById(const char*, void*, double, double*) { return -1; }
-bool plugprobeAxClickAt(double, double) { return false; }
-void plugprobeFocusWindow(void*) {}
-bool plugprobeAxDragAt(double, double, double, double) { return false; }
-bool plugprobeAxTypeText(const char*) { return false; }
-void plugprobePumpApp(double) {}
+#include <cstdio>
+#include <cwchar>
+#include <filesystem>
+#include <map>
+#include <set>
+#include <string>
+#include <vector>
+
+using Microsoft::WRL::ComPtr;
+
+namespace {
+std::wstring toWide(const std::string& s) {
+  if (s.empty()) return {};
+  int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
+  std::wstring w(n, L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), w.data(), n);
+  return w;
+}
+
+std::string toUtf8(const wchar_t* w, int n) {
+  if (n <= 0) return {};
+  int len = WideCharToMultiByte(CP_UTF8, 0, w, n, nullptr, 0, nullptr, nullptr);
+  std::string s(len, '\0');
+  WideCharToMultiByte(CP_UTF8, 0, w, n, s.data(), len, nullptr, nullptr);
+  return s;
+}
+
+void ensureCom() {
+  static const HRESULT hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+  (void)hr;  // RPC_E_CHANGED_MODE just means the message thread already set it
+}
+
+const char* roleOf(CONTROLTYPEID ct) {
+  switch (ct) {
+    case UIA_ButtonControlTypeId: return "Button";
+    case UIA_CheckBoxControlTypeId: return "CheckBox";
+    case UIA_ComboBoxControlTypeId: return "ComboBox";
+    case UIA_EditControlTypeId: return "Edit";
+    case UIA_HyperlinkControlTypeId: return "Hyperlink";
+    case UIA_ImageControlTypeId: return "Image";
+    case UIA_ListControlTypeId: return "List";
+    case UIA_ListItemControlTypeId: return "ListItem";
+    case UIA_MenuControlTypeId: return "Menu";
+    case UIA_MenuItemControlTypeId: return "MenuItem";
+    case UIA_ProgressBarControlTypeId: return "ProgressBar";
+    case UIA_RadioButtonControlTypeId: return "RadioButton";
+    case UIA_ScrollBarControlTypeId: return "ScrollBar";
+    case UIA_SliderControlTypeId: return "Slider";
+    case UIA_SpinnerControlTypeId: return "Spinner";
+    case UIA_TabControlTypeId: return "Tab";
+    case UIA_TabItemControlTypeId: return "TabItem";
+    case UIA_TextControlTypeId: return "Text";
+    case UIA_ToolBarControlTypeId: return "ToolBar";
+    case UIA_GroupControlTypeId: return "Group";
+    case UIA_WindowControlTypeId: return "Window";
+    case UIA_PaneControlTypeId: return "Pane";
+    case UIA_ThumbControlTypeId: return "Thumb";
+    default: return "Unknown";
+  }
+}
+
+struct Walked {
+  PlugprobeAxNode node;
+  ComPtr<IUIAutomationElement> el;
+};
+
+PlugprobeAxNode describe(IUIAutomationElement* el) {
+  PlugprobeAxNode n;
+  CONTROLTYPEID ct = 0;
+  el->get_CurrentControlType(&ct);
+  n.role = roleOf(ct);
+  BSTR name = nullptr;
+  if (SUCCEEDED(el->get_CurrentName(&name)) && name)
+    n.name = toUtf8(name, (int)SysStringLen(name));
+  SysFreeString(name);
+  BOOL enabled = TRUE;
+  el->get_CurrentIsEnabled(&enabled);
+  n.enabled = enabled != FALSE;
+  RECT r{};
+  if (SUCCEEDED(el->get_CurrentBoundingRectangle(&r))) {
+    n.x = r.left;
+    n.y = r.top;
+    n.w = r.right - r.left;
+    n.h = r.bottom - r.top;
+  }
+  ComPtr<IUIAutomationRangeValuePattern> rp;
+  if (SUCCEEDED(el->GetCurrentPatternAs(UIA_RangeValuePatternId,
+                                        IID_PPV_ARGS(&rp)))) {
+    double v = 0;
+    if (SUCCEEDED(rp->get_CurrentValue(&v))) {
+      char buf[32];
+      snprintf(buf, sizeof buf, "%g", v);
+      n.value = buf;
+    }
+  } else {
+    ComPtr<IUIAutomationValuePattern> vp;
+    if (SUCCEEDED(el->GetCurrentPatternAs(UIA_ValuePatternId,
+                                          IID_PPV_ARGS(&vp)))) {
+      BSTR v = nullptr;
+      if (SUCCEEDED(vp->get_CurrentValue(&v)) && v)
+        n.value = toUtf8(v, (int)SysStringLen(v));
+      SysFreeString(v);
+    }
+  }
+  return n;
+}
+
+// Control view, depth <= 24, <= 2000 nodes, <= 500 children per parent (same
+// bounds as the macOS walker).
+void walkEl(IUIAutomationTreeWalker* tw, IUIAutomationElement* el, int depth,
+            std::vector<Walked>& out) {
+  if (depth > 24 || out.size() >= 2000) return;
+  out.push_back({describe(el), el});
+  ComPtr<IUIAutomationElement> child;
+  if (FAILED(tw->GetFirstChildElement(el, &child))) return;
+  for (int i = 0; child.Get() && i < 500 && out.size() < 2000; ++i) {
+    walkEl(tw, child.Get(), depth + 1, out);
+    ComPtr<IUIAutomationElement> next;
+    if (FAILED(tw->GetNextSiblingElement(child.Get(), &next))) break;
+    child = next;
+  }
+}
+
+std::vector<Walked> collect(void* hv) {
+  ensureCom();
+  std::vector<Walked> out;
+  ComPtr<IUIAutomation> ua;
+  if (FAILED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER,
+                              IID_PPV_ARGS(&ua))))
+    return out;
+  ComPtr<IUIAutomationElement> root;
+  ComPtr<IUIAutomationTreeWalker> tw;
+  if (FAILED(ua->ElementFromHandle((HWND)hv, &root)) ||
+      FAILED(ua->get_ControlViewWalker(&tw)))
+    return out;
+  walkEl(tw.Get(), root.Get(), 0, out);
+  std::map<std::string, int> seen;
+  for (auto& w : out) {
+    std::string base = w.node.role + ":" + w.node.name;
+    int k = seen[base]++;
+    w.node.id = k ? base + "#" + std::to_string(k) : base;
+  }
+  return out;
+}
+
+bool pngEncoder(CLSID* clsid) {
+  UINT num = 0, size = 0;
+  Gdiplus::GetImageEncodersSize(&num, &size);
+  if (size == 0) return false;
+  std::vector<unsigned char> buf(size);
+  auto* enc = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
+  Gdiplus::GetImageEncoders(num, size, enc);
+  for (UINT i = 0; i < num; ++i)
+    if (wcscmp(enc[i].MimeType, L"image/png") == 0) {
+      *clsid = enc[i].Clsid;
+      return true;
+    }
+  return false;
+}
+
+bool savePng(HBITMAP hbm, const char* path) {
+  Gdiplus::GdiplusStartupInput in;
+  ULONG_PTR token = 0;
+  if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return false;
+  bool ok = false;
+  {
+    Gdiplus::Bitmap bm(hbm, nullptr);
+    CLSID png{};
+    if (pngEncoder(&png)) {
+      std::filesystem::path p(toWide(path));
+      if (p.has_parent_path())
+        std::filesystem::create_directories(p.parent_path());
+      ok = bm.Save(p.c_str(), &png, nullptr) == Gdiplus::Ok;
+    }
+  }
+  Gdiplus::GdiplusShutdown(token);
+  return ok;
+}
+
+// 1 ok / 0 fail / -1 blank (uniform grab: GPU or async-painted editor).
+int saveWindowShot(HWND hwnd, const char* path, int* w, int* h) {
+  RECT r{};
+  if (!GetWindowRect(hwnd, &r)) return 0;
+  int W = r.right - r.left, H = r.bottom - r.top;
+  if (w) *w = W;
+  if (h) *h = H;
+  if (W <= 0 || H <= 0) return 0;
+  HDC screen = GetDC(nullptr);
+  HDC mem = CreateCompatibleDC(screen);
+  BITMAPINFO bmi{};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = W;
+  bmi.bmiHeader.biHeight = -H;  // top-down
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+  void* bits = nullptr;
+  HBITMAP dib = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+  ReleaseDC(nullptr, screen);
+  int rc = 0;
+  if (dib) {
+    HGDIOBJ old = SelectObject(mem, dib);
+    bool ok = PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT) != FALSE;
+    SelectObject(mem, old);
+    if (ok) {
+      auto* px = static_cast<unsigned char*>(bits);
+      size_t n = (size_t)W * H * 4;
+      std::set<unsigned char> seen;
+      for (size_t i = 0; i < n; i += 97) seen.insert(px[i]);
+      if (seen.size() <= 4) {
+        rc = -1;
+      } else {
+        for (size_t i = 3; i < n; i += 4) px[i] = 0xFF;  // PNG must be opaque
+        rc = savePng(dib, path) ? 1 : 0;
+      }
+    }
+    DeleteObject(dib);
+  }
+  DeleteDC(mem);
+  return rc;
+}
+
+void mouse(DWORD flags) {
+  INPUT in{};
+  in.type = INPUT_MOUSE;
+  in.mi.dwFlags = flags;
+  SendInput(1, &in, sizeof in);
+}
+
+bool keyUnit(wchar_t c, DWORD flags) {
+  INPUT in{};
+  in.type = INPUT_KEYBOARD;
+  in.ki.wScan = (WORD)c;
+  in.ki.dwFlags = KEYEVENTF_UNICODE | flags;
+  return SendInput(1, &in, sizeof in) == 1;
+}
+}  // namespace
+
+PlugprobeOsCaps plugprobeOsCaps() { return {true, true, true, false}; }
+bool plugprobeInputGranted() { return true; }
+
+int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h) {
+  return saveWindowShot((HWND)nsView, path, w, h);
+}
+int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h) {
+  return saveWindowShot((HWND)nsView, path, w, h);
+}
+
+bool plugprobeShowFront(void* hv) {
+  HWND h = (HWND)hv;
+  ShowWindow(h, SW_SHOWNORMAL);
+  SetForegroundWindow(h);
+  return IsWindowVisible(h) != FALSE;
+}
+
+std::vector<PlugprobeAxNode> plugprobeAxDump(void* hv) {
+  std::vector<PlugprobeAxNode> nodes;
+  for (auto& w : collect(hv)) nodes.push_back(w.node);
+  return nodes;
+}
+
+int plugprobeAxPressById(const char* nodeId, void* hv, double* cx, double* cy) {
+  for (auto& w : collect(hv)) {
+    if (w.node.id != nodeId) continue;
+    if (cx) *cx = w.node.x + w.node.w / 2;
+    if (cy) *cy = w.node.y + w.node.h / 2;
+    ComPtr<IUIAutomationInvokePattern> ip;
+    if (FAILED(w.el->GetCurrentPatternAs(UIA_InvokePatternId, IID_PPV_ARGS(&ip))))
+      return -1;
+    return SUCCEEDED(ip->Invoke()) ? 1 : -1;
+  }
+  return 0;
+}
+
+int plugprobeAxSetValueById(const char* nodeId, void* hv, double value,
+                            double* actual) {
+  for (auto& w : collect(hv)) {
+    if (w.node.id != nodeId) continue;
+    ComPtr<IUIAutomationRangeValuePattern> rp;
+    if (FAILED(w.el->GetCurrentPatternAs(UIA_RangeValuePatternId,
+                                         IID_PPV_ARGS(&rp))))
+      return -1;
+    if (FAILED(rp->SetValue(value))) return -1;
+    double v = 0;
+    rp->get_CurrentValue(&v);
+    if (actual) *actual = v;
+    return 1;
+  }
+  return 0;
+}
+
+bool plugprobeAxClickAt(double x, double y) {
+  if (!SetCursorPos((int)x, (int)y)) return false;
+  mouse(MOUSEEVENTF_LEFTDOWN);
+  Sleep(60);
+  mouse(MOUSEEVENTF_LEFTUP);
+  plugprobePumpApp(0.4);
+  return true;
+}
+
+bool plugprobeAxDragAt(double x, double y, double dx, double dy) {
+  if (!SetCursorPos((int)x, (int)y)) return false;
+  mouse(MOUSEEVENTF_LEFTDOWN);
+  for (int i = 1; i <= 8; ++i) {
+    SetCursorPos((int)(x + dx * i / 8), (int)(y + dy * i / 8));
+    Sleep(8);
+  }
+  mouse(MOUSEEVENTF_LEFTUP);
+  plugprobePumpApp(0.4);
+  return true;
+}
+
+bool plugprobeAxTypeText(const char* text) {
+  for (wchar_t c : toWide(text)) {
+    if (!keyUnit(c, 0) || !keyUnit(c, KEYEVENTF_KEYUP)) return false;
+  }
+  plugprobePumpApp(0.3);
+  return true;
+}
+
+void plugprobeFocusWindow(void* hv) {
+  HWND h = (HWND)hv;
+  DWORD fg = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
+  DWORD me = GetCurrentThreadId();
+  bool attach = fg != 0 && fg != me;
+  if (attach) AttachThreadInput(fg, me, TRUE);  // lets us take focus from another process
+  SetForegroundWindow(h);
+  BringWindowToTop(h);
+  if (attach) AttachThreadInput(fg, me, FALSE);
+  plugprobePumpApp(0.3);
+}
+
+void plugprobePumpApp(double seconds) {
+  ULONGLONG end = GetTickCount64() + (ULONGLONG)(seconds * 1000.0);
+  MSG m;
+  for (;;) {
+    while (PeekMessage(&m, nullptr, 0, 0, PM_REMOVE)) {
+      TranslateMessage(&m);
+      DispatchMessage(&m);
+    }
+    if (GetTickCount64() >= end) return;
+    Sleep(5);
+  }
+}
+
 void plugprobeTryActivate() {}
-// Real backend: Media Foundation screen capture + Sink Writer MP4,
-// take WAV muxed as the audio track (see macOS backend for the shape).
+
+// Not implemented yet (Media Foundation Sink Writer, next phase).
 void* plugprobeScreenRecStart(void*, std::string&) { return nullptr; }
 void plugprobeScreenRecGrab(void*) {}
 bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
   return false;
 }
-
-PlugprobeOsCaps plugprobeOsCaps() { return {}; }
-bool plugprobeInputGranted() { return true; }

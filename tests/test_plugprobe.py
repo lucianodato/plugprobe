@@ -309,10 +309,10 @@ class Contract(unittest.TestCase):
         s, _ = run("snapshot", {"limit": 10, "offset": 0})
         self.assertEqual(s["error"]["code"], "ARGS")
 
-    def test_os_driver_gate_off_macos(self):
+    def test_os_driver_gate_on_linux(self):
         plugin = os.environ.get("PLUGPROBE_TEST_PLUGIN", "")
-        if not BIN or not plugin or sys.platform == "darwin":
-            self.skipTest("needs PLUGPROBE_TEST_PLUGIN on a non-macOS host")
+        if not BIN or not plugin or not sys.platform.startswith("linux"):
+            self.skipTest("needs PLUGPROBE_TEST_PLUGIN on a Linux host")
         s, _ = run("snapshot", {"plugin": plugin, "limit": 10})
         self.assertEqual(s["error"]["code"], "NO_OS_DRIVER")
         out, _ = run("act", {"plugin": plugin, "via": "os",

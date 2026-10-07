@@ -62,6 +62,9 @@ if(APPLE)
         "-framework CoreAudioKit" "-framework Cocoa" "-framework ApplicationServices"
         "-framework AVFoundation" "-framework CoreMedia")
 endif()
+if(WIN32)
+    target_link_libraries(plugprobe PRIVATE UIAutomationCore gdiplus)
+endif()
 target_link_libraries(plugprobe PRIVATE
     juce::juce_audio_processors
     juce::juce_audio_formats
