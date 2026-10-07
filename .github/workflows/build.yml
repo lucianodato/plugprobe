@@ -120,7 +120,7 @@ jobs:
           sudo apt-get install -qq -y \
             build-essential cmake \
             libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
-            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libx11-dev libxtst-dev libxcomposite-dev libxcursor-dev libxext-dev \
             libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev
 
       - name: Configure CMake

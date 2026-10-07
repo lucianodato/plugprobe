@@ -8,8 +8,10 @@ offline, diff the results. No DAW.
 
 Single JUCE/C++ CLI, no new dependencies. Headless by
 default (byte-identical renders); UI/visible/screenshot paths are opt-in.
-OS driver + capture are macOS-only today; Windows/Linux backends are
-compiled stubs that fail loud (`NO_OS_DRIVER`).
+OS driver: macOS has the full set (AX tree, HID input, shots, video). Windows
+has tree (UI Automation), input and shots; Linux (X11) has input and shots.
+Anything a platform lacks fails loud with `NO_OS_DRIVER`. Video is macOS-only
+for now; Linux tree (AT-SPI) and Windows/Linux video are pending.
 
 Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
 
@@ -141,7 +143,8 @@ src/cmd_compare.cpp     null/LUFS/spectral/SDR/cost diff
 src/cmd_session.cpp     session start|act|stop + meters
 src/plugprobe_os.h      OS-layer interface (front/capture/tree/input)
 src/plugprobe_os_mac.mm macOS AX/CGEvent driver + NSView capture
-src/plugprobe_os_win.cpp / plugprobe_os_linux.cpp  stub backends (fail loud)
+src/plugprobe_os_win.cpp  Windows UIA/SendInput/PrintWindow backend
+src/plugprobe_os_linux.cpp  Linux X11 XTest/XGetImage backend
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
 scripts/example_session.py  CI end-to-end (noise -> example sweep -> take+video)
