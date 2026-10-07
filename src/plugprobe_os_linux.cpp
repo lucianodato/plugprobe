@@ -1,10 +1,11 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // plugprobe_os_linux.cpp: Linux OS backend (X11). Input: XTest (US-layout ASCII
-// typing). Capture: XGetImage encoded to PNG via JUCE. Without an X display
-// (Wayland-only, headless) every capability is off and callers fail loud with
-// NO_OS_DRIVER. Not yet: UI tree (AT-SPI) and screen recording.
+// typing). Frame grab: XGetImage. PNG and AVI encoding are shared (capture.cpp).
+// Without an X display (Wayland-only, headless) every capability is off and
+// callers fail loud with NO_OS_DRIVER. Not yet: UI tree (AT-SPI).
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "capture.h"
 #include "plugprobe_os.h"
 
 #include <X11/Xlib.h>
@@ -13,8 +14,6 @@
 #include <X11/extensions/XTest.h>
 
 #include <cstdint>
-#include <cstring>
-#include <set>
 
 namespace {
 Display* xdisplay() {
@@ -25,53 +24,6 @@ Display* xdisplay() {
 Window windowOf(void* hv) { return (Window)(uintptr_t)hv; }
 
 void pumpMs(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
-
-// 1 ok / 0 fail / -1 blank (uniform grab, e.g. a GL-only or unmapped editor).
-int saveWindowShot(void* hv, const char* path, int* w, int* h) {
-  Display* d = xdisplay();
-  if (!d) return 0;
-  XWindowAttributes a;
-  if (!XGetWindowAttributes(d, windowOf(hv), &a) || a.width <= 0 ||
-      a.height <= 0)
-    return 0;
-  if (w) *w = a.width;
-  if (h) *h = a.height;
-  if (a.map_state != IsViewable) return 0;  // unmapped windows have no pixels
-  XImage* xi = XGetImage(d, windowOf(hv), 0, 0, a.width, a.height, AllPlanes,
-                         ZPixmap);
-  if (!xi) return 0;
-  if (xi->bits_per_pixel != 32 || xi->red_mask != 0xff0000 ||
-      xi->green_mask != 0xff00 || xi->blue_mask != 0xff) {
-    XDestroyImage(xi);
-    return 0;  // only the 32-bit TrueColor layout every desktop X server uses
-  }
-  int W = xi->width, H = xi->height;
-  std::set<unsigned long> seen;
-  for (int y = 0; y < H; y += 7)
-    for (int x = 0; x < W; x += 7) seen.insert(XGetPixel(xi, x, y));
-  if (seen.size() <= 4) {
-    XDestroyImage(xi);
-    return -1;
-  }
-  juce::Image img(juce::Image::ARGB, W, H, false);
-  for (int y = 0; y < H; ++y)
-    for (int x = 0; x < W; ++x) {
-      unsigned long p = XGetPixel(xi, x, y);
-      img.setPixelAt(x, y,
-                     juce::Colour((juce::uint8)((p >> 16) & 0xff),
-                                  (juce::uint8)((p >> 8) & 0xff),
-                                  (juce::uint8)(p & 0xff)));
-    }
-  XDestroyImage(xi);
-  juce::File f(path);
-  f.getParentDirectory().createDirectory();
-  juce::FileOutputStream os(f);
-  if (!os.openedOk()) return 0;
-  os.setPosition(0);
-  os.truncate();
-  juce::PNGImageFormat png;
-  return png.writeImageToStream(img, os) ? 1 : 0;
-}
 
 bool xtestAvailable(Display* d) {
   int ev = 0, er = 0, maj = 0, min = 0;
@@ -99,15 +51,46 @@ bool typeAscii(Display* d, unsigned char c) {
 
 PlugprobeOsCaps plugprobeOsCaps() {
   Display* d = xdisplay();
-  return {d != nullptr, false, xtestAvailable(d), false};
+  return {d != nullptr, false, xtestAvailable(d), d != nullptr};
 }
 bool plugprobeInputGranted() { return true; }
 
+bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
+  Display* d = xdisplay();
+  if (!d) return false;
+  XWindowAttributes a;
+  if (!XGetWindowAttributes(d, windowOf(hv), &a) || a.width <= 0 ||
+      a.height <= 0)
+    return false;
+  if (a.map_state != IsViewable) return false;  // unmapped windows have no pixels
+  XImage* xi = XGetImage(d, windowOf(hv), 0, 0, a.width, a.height, AllPlanes,
+                         ZPixmap);
+  if (!xi) return false;
+  if (xi->bits_per_pixel != 32 || xi->red_mask != 0xff0000 ||
+      xi->green_mask != 0xff00 || xi->blue_mask != 0xff) {
+    XDestroyImage(xi);
+    return false;  // only the 32-bit TrueColor layout every desktop X server uses
+  }
+  out.w = xi->width;
+  out.h = xi->height;
+  out.rgb.resize((size_t)out.w * out.h * 3);
+  for (int y = 0; y < out.h; ++y)
+    for (int x = 0; x < out.w; ++x) {
+      unsigned long p = XGetPixel(xi, x, y);
+      unsigned char* dst = out.rgb.data() + ((size_t)y * out.w + x) * 3;
+      dst[0] = (unsigned char)((p >> 16) & 0xff);
+      dst[1] = (unsigned char)((p >> 8) & 0xff);
+      dst[2] = (unsigned char)(p & 0xff);
+    }
+  XDestroyImage(xi);
+  return true;
+}
+
 int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h) {
-  return saveWindowShot(nsView, path, w, h);
+  return pp::saveShotPng(nsView, path, w, h);
 }
 int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h) {
-  return saveWindowShot(nsView, path, w, h);
+  return pp::saveShotPng(nsView, path, w, h);
 }
 
 bool plugprobeShowFront(void* hv) {
@@ -176,10 +159,3 @@ void plugprobeFocusWindow(void* hv) {
 void plugprobePumpApp(double seconds) { pumpMs((int)(seconds * 1000.0)); }
 
 void plugprobeTryActivate() {}
-
-// Not implemented yet (PipeWire / frame-grab encoder, later step).
-void* plugprobeScreenRecStart(void*, std::string&) { return nullptr; }
-void plugprobeScreenRecGrab(void*) {}
-bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
-  return false;
-}

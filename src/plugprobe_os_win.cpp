@@ -1,9 +1,11 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // plugprobe_os_win.cpp: Windows OS backend. Tree: UI Automation (ElementFromHandle,
 // Invoke / RangeValue patterns). Input: SendInput (mouse + unicode keys).
-// Capture: PrintWindow(PW_RENDERFULLCONTENT) encoded to PNG via GDI+.
-// Recording is not implemented yet (record=false: videos are skipped loudly).
+// Frame grab: PrintWindow(PW_RENDERFULLCONTENT). PNG and AVI encoding are shared
+// (capture.cpp).
 #include "plugprobe_os.h"
+
+#include "capture.h"
 
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
@@ -15,10 +17,7 @@
 #include <wrl/client.h>
 
 #include <cstdio>
-#include <cwchar>
-#include <filesystem>
 #include <map>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -159,83 +158,6 @@ std::vector<Walked> collect(void* hv) {
   return out;
 }
 
-bool pngEncoder(CLSID* clsid) {
-  UINT num = 0, size = 0;
-  Gdiplus::GetImageEncodersSize(&num, &size);
-  if (size == 0) return false;
-  std::vector<unsigned char> buf(size);
-  auto* enc = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-  Gdiplus::GetImageEncoders(num, size, enc);
-  for (UINT i = 0; i < num; ++i)
-    if (wcscmp(enc[i].MimeType, L"image/png") == 0) {
-      *clsid = enc[i].Clsid;
-      return true;
-    }
-  return false;
-}
-
-bool savePng(HBITMAP hbm, const char* path) {
-  Gdiplus::GdiplusStartupInput in;
-  ULONG_PTR token = 0;
-  if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return false;
-  bool ok = false;
-  {
-    Gdiplus::Bitmap bm(hbm, nullptr);
-    CLSID png{};
-    if (pngEncoder(&png)) {
-      std::filesystem::path p(toWide(path));
-      if (p.has_parent_path())
-        std::filesystem::create_directories(p.parent_path());
-      ok = bm.Save(p.c_str(), &png, nullptr) == Gdiplus::Ok;
-    }
-  }
-  Gdiplus::GdiplusShutdown(token);
-  return ok;
-}
-
-// 1 ok / 0 fail / -1 blank (uniform grab: GPU or async-painted editor).
-int saveWindowShot(HWND hwnd, const char* path, int* w, int* h) {
-  RECT r{};
-  if (!GetWindowRect(hwnd, &r)) return 0;
-  int W = r.right - r.left, H = r.bottom - r.top;
-  if (w) *w = W;
-  if (h) *h = H;
-  if (W <= 0 || H <= 0) return 0;
-  HDC screen = GetDC(nullptr);
-  HDC mem = CreateCompatibleDC(screen);
-  BITMAPINFO bmi{};
-  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmi.bmiHeader.biWidth = W;
-  bmi.bmiHeader.biHeight = -H;  // top-down
-  bmi.bmiHeader.biPlanes = 1;
-  bmi.bmiHeader.biBitCount = 32;
-  bmi.bmiHeader.biCompression = BI_RGB;
-  void* bits = nullptr;
-  HBITMAP dib = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-  ReleaseDC(nullptr, screen);
-  int rc = 0;
-  if (dib) {
-    HGDIOBJ old = SelectObject(mem, dib);
-    bool ok = PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT) != FALSE;
-    SelectObject(mem, old);
-    if (ok) {
-      auto* px = static_cast<unsigned char*>(bits);
-      size_t n = (size_t)W * H * 4;
-      std::set<unsigned char> seen;
-      for (size_t i = 0; i < n; i += 97) seen.insert(px[i]);
-      if (seen.size() <= 4) {
-        rc = -1;
-      } else {
-        for (size_t i = 3; i < n; i += 4) px[i] = 0xFF;  // PNG must be opaque
-        rc = savePng(dib, path) ? 1 : 0;
-      }
-    }
-    DeleteObject(dib);
-  }
-  DeleteDC(mem);
-  return rc;
-}
-
 void mouse(DWORD flags) {
   INPUT in{};
   in.type = INPUT_MOUSE;
@@ -252,14 +174,54 @@ bool keyUnit(wchar_t c, DWORD flags) {
 }
 }  // namespace
 
-PlugprobeOsCaps plugprobeOsCaps() { return {true, true, true, false}; }
+PlugprobeOsCaps plugprobeOsCaps() { return {true, true, true, true}; }
 bool plugprobeInputGranted() { return true; }
 
-int plugprobeSaveNSViewShot(void* nsView, const char* path, int* w, int* h) {
-  return saveWindowShot((HWND)nsView, path, w, h);
+bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
+  HWND hwnd = (HWND)hv;
+  RECT r{};
+  if (!GetWindowRect(hwnd, &r)) return false;
+  int W = r.right - r.left, H = r.bottom - r.top;
+  if (W <= 0 || H <= 0) return false;
+  HDC screen = GetDC(nullptr);
+  HDC mem = CreateCompatibleDC(screen);
+  BITMAPINFO bmi{};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = W;
+  bmi.bmiHeader.biHeight = -H;  // top-down
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+  void* bits = nullptr;
+  HBITMAP dib = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+  ReleaseDC(nullptr, screen);
+  bool ok = false;
+  if (dib) {
+    HGDIOBJ old = SelectObject(mem, dib);
+    ok = PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT) != FALSE;
+    SelectObject(mem, old);
+    if (ok) {
+      auto* px = static_cast<unsigned char*>(bits);  // BGRX
+      out.w = W;
+      out.h = H;
+      out.rgb.resize((size_t)W * H * 3);
+      for (size_t i = 0; i < (size_t)W * H; ++i) {
+        out.rgb[3 * i] = px[4 * i + 2];
+        out.rgb[3 * i + 1] = px[4 * i + 1];
+        out.rgb[3 * i + 2] = px[4 * i];
+      }
+    }
+    DeleteObject(dib);
+  }
+  DeleteDC(mem);
+  return ok;
 }
-int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h) {
-  return saveWindowShot((HWND)nsView, path, w, h);
+
+int plugprobeSaveNSViewShot(void* hv, const char* path, int* w, int* h) {
+  return pp::saveShotPng(hv, path, w, h);
+}
+int plugprobeSaveWindowShot(void* hv, const char* path, int* w, int* h) {
+  return pp::saveShotPng(hv, path, w, h);
 }
 
 bool plugprobeShowFront(void* hv) {
@@ -360,10 +322,3 @@ void plugprobePumpApp(double seconds) {
 }
 
 void plugprobeTryActivate() {}
-
-// Not implemented yet (Media Foundation Sink Writer, next phase).
-void* plugprobeScreenRecStart(void*, std::string&) { return nullptr; }
-void plugprobeScreenRecGrab(void*) {}
-bool plugprobeScreenRecFinish(void*, const char*, const char*, std::string&) {
-  return false;
-}

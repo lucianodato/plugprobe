@@ -36,7 +36,7 @@ Agent-driven audio plugin host. CLI-only: every command is
    notes is the synth smoke pattern). Every command runs
    crash-isolated: a dying plugin yields `CRASH`, never a dead pipe.
    `timeline:[{atMs,params?,click?}]` replays learn-freeze on one instance.
-   Opt-in captures: `shot:path.png`, `video:out.mp4` (macOS, take muxed in).
+   Opt-in captures: `shot:path.png`, `video:out.avi` (all OSes, take muxed in as audio).
 5. **Session** (multi-step, agent-paced): `session start {loop,out,...}` →
    `session act {session,params?|click?}` (clicks verified read-only) →
    `session stop {session}` (presses once, renders). `meters {session}` anytime.

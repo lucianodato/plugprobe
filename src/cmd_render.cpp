@@ -1,5 +1,6 @@
 // GPL-3.0-or-later — Copyright (c) 2026 Luciano Dato — plugprobe
 // cmd_render.cpp: `render` command. See cmds.h.
+#include "capture.h"
 #include "cmds.h"
 #include "gui.h"
 
@@ -31,7 +32,7 @@ int runRender(const juce::var& args)
     juce::AudioPluginInstance* inst = nullptr;
     juce::AudioProcessorEditor* visEd = nullptr;
     juce::String visWhy, edWhy;
-    void* vidRec = nullptr;  // screen recording; stopped+muxed after writeWav
+    std::unique_ptr<pp::VideoRec> vidRec;  // frame-grab recording; muxed after writeWav
     juce::String vidWhy, vidSaved;
     juce::PluginDescription renderDesc;
     bool wantShot = jstr(args, "shot").isNotEmpty();
@@ -415,9 +416,7 @@ int runRender(const juce::var& args)
         if (visEd == nullptr) {
           vidWhy = edWhy.isNotEmpty() ? edWhy : "no-editor";
         } else {
-          std::string ve;
-          vidRec = plugprobeScreenRecStart(visEd->getWindowHandle(), ve);
-          if (vidRec == nullptr) vidWhy = juce::String(ve);
+          vidRec = pp::videoStart(visEd->getWindowHandle());
         }
       }
       size_t ei = 0, bc = 0;
@@ -570,7 +569,7 @@ int runRender(const juce::var& args)
         if (visEd != nullptr) paceToRealtime(paceT0, pos + (size_t)m, sr);
         if (vidRec != nullptr) {
           pumpMessages();  // fresh paint before the grab
-          plugprobeScreenRecGrab(vidRec);
+          pp::videoGrab(*vidRec);
         }
       }
       int tailN = (int)(jnum(args, "tail_ms", 500.0) / 1000.0 * sr);
@@ -593,7 +592,7 @@ int runRender(const juce::var& args)
             paceToRealtime(paceT0, n + (size_t)(pos + m), sr);
           if (vidRec != nullptr) {
             pumpMessages();
-            plugprobeScreenRecGrab(vidRec);
+            pp::videoGrab(*vidRec);
           }
         }
       }
@@ -635,18 +634,16 @@ int runRender(const juce::var& args)
       return 1;
     }
     if (vidRec != nullptr) {
-      std::string fe;
-      juce::String wavAbs = juce::File::isAbsolutePath(outP)
-                                ? outP
-                                : juce::File::getCurrentWorkingDirectory()
-                                      .getChildFile(outP)
-                                      .getFullPathName();
-      if (plugprobeScreenRecFinish(vidRec, wavAbs.toRawUTF8(),
-                                   videoP.toRawUTF8(), fe))
+      juce::String fe;
+      juce::File take = juce::File::isAbsolutePath(outP)
+                            ? juce::File(outP)
+                            : juce::File::getCurrentWorkingDirectory()
+                                  .getChildFile(outP);
+      if (pp::videoFinish(*vidRec, take, juce::File(videoP), fe))
         vidSaved = videoP;
       else if (vidWhy.isEmpty())
-        vidWhy = juce::String(fe);
-      vidRec = nullptr;
+        vidWhy = fe;
+      vidRec.reset();
     }
     auto* o = new juce::DynamicObject();
     o->setProperty("out", outP);

@@ -26,7 +26,7 @@ struct PlugprobeOsCaps {
   bool editor = false;  // ShowFront + editor shots (NSView / HWND / X11 window)
   bool tree = false;    // AxDump / AxPressById / AxSetValueById
   bool input = false;   // AxClickAt / AxDragAt / AxTypeText
-  bool record = false;  // ScreenRec*
+  bool record = false;  // plugprobeGrabFrame (video)
 };
 PlugprobeOsCaps plugprobeOsCaps();
 // Synthetic input permission. macOS needs the Accessibility grant; ad-hoc
@@ -61,15 +61,11 @@ void plugprobePumpApp(double seconds);
 // runs never touch it (no dock bounce, no focus steal).
 void plugprobeTryActivate();
 
-// --- Screen recording (opt-in `video` on render; macOS only) ---
-// Frame-grab, not screen capture: the editor view renders itself into a
-// bitmap per grab (same path as headless shots — works hidden, no Screen
-// Recording grant, no visible window). Finish encodes H.264 via
-// AVAssetWriter and appends wavIn (the take) as the AAC track, so what you
-// see produced exactly what you hear. Grab from the paced loop (it
-// self-throttles to ~15fps). Diagnostic-only: failures return
-// false/empty, never throw; the audio take is unaffected.
-void* plugprobeScreenRecStart(void* nsView, std::string& err);
-void plugprobeScreenRecGrab(void* rec);
-bool plugprobeScreenRecFinish(void* rec, const char* wavIn, const char* mp4Out,
-                              std::string& err);
+// --- Frame grab (shots and video are encoded in capture.cpp, shared) ---
+// The editor view renders itself into an RGB bitmap: works hidden, no Screen
+// Recording grant, no visible window. false = no pixels this time.
+struct PlugprobeRgbFrame {
+  int w = 0, h = 0;
+  std::vector<unsigned char> rgb;  // top-down, 3 bytes per pixel
+};
+bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out);

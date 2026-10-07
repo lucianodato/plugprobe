@@ -139,7 +139,7 @@ class Contract(unittest.TestCase):
         o = os.path.join(tmp, "o.wav")
         r, _ = run("render", {"plugin": "none", "in": src, "out": o,
                               "bypass": True, "tail_ms": 0,
-                              "video": os.path.join(tmp, "v.mp4")})
+                              "video": os.path.join(tmp, "v.avi")})
         self.assertTrue(r["ok"])
         self.assertEqual(r["data"]["videoSkipped"], "bypass-no-instance")
 

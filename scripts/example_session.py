@@ -48,7 +48,7 @@ def main():
         w.writeframes(b"".join(struct.pack("<h", random.randint(-16000, 16000))
                                for _ in range(48000 * 4 * 2)))
     take = os.path.join(a.out, "take.wav")
-    vid = os.path.join(a.out, "sweep.mp4")
+    vid = os.path.join(a.out, "sweep.avi")
 
     s = run(a.bin, "session-start", {"plugin": a.plugin, "loop": loop,
                                      "out": take, "video": vid})
