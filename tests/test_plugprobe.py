@@ -5,6 +5,7 @@ import math
 import os
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 import wave
@@ -138,7 +139,7 @@ class Contract(unittest.TestCase):
         o = os.path.join(tmp, "o.wav")
         r, _ = run("render", {"plugin": "none", "in": src, "out": o,
                               "bypass": True, "tail_ms": 0,
-                              "video": os.path.join(tmp, "v.mp4")})
+                              "video": os.path.join(tmp, "v.avi")})
         self.assertTrue(r["ok"])
         self.assertEqual(r["data"]["videoSkipped"], "bypass-no-instance")
 
@@ -307,6 +308,16 @@ class Contract(unittest.TestCase):
         self.assertEqual(s["error"]["code"], "NOT_FOUND")
         s, _ = run("snapshot", {"limit": 10, "offset": 0})
         self.assertEqual(s["error"]["code"], "ARGS")
+
+    def test_os_driver_gate_on_linux(self):
+        plugin = os.environ.get("PLUGPROBE_TEST_PLUGIN", "")
+        if not BIN or not plugin or not sys.platform.startswith("linux"):
+            self.skipTest("needs PLUGPROBE_TEST_PLUGIN on a Linux host")
+        s, _ = run("snapshot", {"plugin": plugin, "limit": 10})
+        self.assertEqual(s["error"]["code"], "NO_OS_DRIVER")
+        out, _ = run("act", {"plugin": plugin, "via": "os",
+                             "action": {"target": "AXButton:Learn"}})
+        self.assertEqual(out["error"]["code"], "NO_OS_DRIVER")
 
 
 if __name__ == "__main__":

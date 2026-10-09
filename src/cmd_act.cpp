@@ -106,10 +106,11 @@ int runAct(const juce::var& args)
         emitErr(errObj("NOT_FOUND", "plugin not found"));
         return 1;
       }
-#if !JUCE_MAC
-      emitErr(errObj("NO_OS_DRIVER", "os driver is macOS-only"));
-      return 1;
-#else
+      const auto caps = plugprobeOsCaps();
+      if (!caps.editor || !caps.tree || !caps.input) {
+        emitErr(errObj("NO_OS_DRIVER", "os driver unavailable on this OS"));
+        return 1;
+      }
       if (!guiCapable(d)) {
         emitErr(errObj("NO_OS_DRIVER", "os driver needs a GUI-hosted "
                                            "plugin (VST3/AU); LV2/etc expose "
@@ -147,7 +148,7 @@ int runAct(const juce::var& args)
                                    "them (node-id press works headless via AX)"));
           return false;
         }
-        if (!AXIsProcessTrusted()) {
+        if (!plugprobeInputGranted()) {
           emitErr(errObj("AX_UNTRUSTED",
                          juce::String("os act ") + what +
                              " needs the Accessibility grant for THIS plugprobe "
@@ -227,7 +228,7 @@ int runAct(const juce::var& args)
                                      "them (press works headless via AX)"));
               return false;
             }
-            if (!AXIsProcessTrusted()) {
+            if (!plugprobeInputGranted()) {
               emitErr(errObj("AX_UNTRUSTED",
                              "os act drag needs the Accessibility grant for THIS "
                              "plugprobe binary; ad-hoc rebuilds change its hash and "
@@ -302,7 +303,7 @@ int runAct(const juce::var& args)
                                      "(press works headless via AX)"));
               return false;
             }
-            if (!AXIsProcessTrusted()) {
+            if (!plugprobeInputGranted()) {
               emitErr(errObj("AX_UNTRUSTED",
                              "os act type needs the Accessibility grant for THIS "
                              "plugprobe binary; ad-hoc rebuilds change its hash and "
@@ -341,7 +342,7 @@ int runAct(const juce::var& args)
                                      juce::String((int)nodes.size()) +
                                      ": " + seen +
                                      "; trusted=" +
-                                     juce::String(AXIsProcessTrusted() ? "yes"
+                                     juce::String(plugprobeInputGranted() ? "yes"
                                                                         : "no") +
                                      ")"));
             return false;
@@ -394,7 +395,6 @@ int runAct(const juce::var& args)
       if (wantVis) o->setProperty("visible", true);
       emitOk(juce::var(o));
       return 0;
-#endif
     }
     // --via juce: param-plane only, headless-safe.
     juce::PluginDescription d;
@@ -487,18 +487,18 @@ int runAct(const juce::var& args)
         if (wantVis) visWhy = why;
       } else {
         if (asp.isNotEmpty()) {
-#if JUCE_MAC
-          juce::String saved, why;
-          if (noteCapture(plugprobeSaveNSViewShot(ed->getWindowHandle(),
-                                              asp.toRawUTF8(), nullptr,
-                                              nullptr),
-                          asp, saved, why))
-            o->setProperty("shotAfter", saved);
-          else
-            o->setProperty("shotSkipped", why);
-#else
-          o->setProperty("shotSkipped", "no-editor-or-headless");
-#endif
+          if (!plugprobeOsCaps().editor) {
+            o->setProperty("shotSkipped", "NO_OS_DRIVER");
+          } else {
+            juce::String saved, why;
+            if (noteCapture(plugprobeSaveNSViewShot(ed->getWindowHandle(),
+                                                asp.toRawUTF8(), nullptr,
+                                                nullptr),
+                            asp, saved, why))
+              o->setProperty("shotAfter", saved);
+            else
+              o->setProperty("shotSkipped", why);
+          }
         }
         if (wantVis) holdUi((int)jnum(args, "holdMs", 2000));
         if (ed->isOnDesktop()) ed->removeFromDesktop();

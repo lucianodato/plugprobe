@@ -120,8 +120,9 @@ jobs:
           sudo apt-get install -qq -y \
             build-essential cmake \
             libasound2-dev libjack-jackd2-dev libgl1-mesa-dev \
-            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
-            libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev
+            libx11-dev libxtst-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libfontconfig1-dev libfreetype6-dev \
+            xvfb
 
       - name: Configure CMake
         run: |
@@ -139,27 +140,28 @@ jobs:
           if [ -n "$LEAKS" ]; then echo "$LEAKS"; exit 1; fi
           echo "[PASS] plugprobe (static libgcc/libstdc++, desktop syslibs dynamic)"
 
-      - name: Contract Tests
+      - name: Contract Tests (under Xvfb, so the X11 driver is live)
         run: |
-          PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+          xvfb-run -a env PLUGPROBE_BIN=$PWD/build/plugprobe_artefacts/Release/plugprobe \
+            PLUGPROBE_TEST_PLUGIN="$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
             python3 tests/test_plugprobe.py
 
       - name: Example end-to-end (session, audio proof)
         run: |
           mkdir -p example-takes
-          python3 scripts/example_session.py \
+          xvfb-run -a python3 scripts/example_session.py \
             --bin $PWD/build/plugprobe_artefacts/Release/plugprobe \
             --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
-            --out example-takes
+            --out example-takes --require-video
 
       - uses: actions/upload-artifact@v4
         with:
-          name: example-takes-linux-${{ github.sha }}
+          name: example-takes-linux-${{ steps.extract_version.outputs.version }}
           path: example-takes/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: plugprobe-linux-${{ github.sha }}
+          name: plugprobe-linux-${{ steps.extract_version.outputs.version }}
           path: build/plugprobe_artefacts/Release/plugprobe
 
       - name: Stage release asset
@@ -227,16 +229,16 @@ jobs:
           python3 scripts/example_session.py \
             --bin $PWD/build/plugprobe_artefacts/Release/plugprobe.exe \
             --plugin "$PWD/build/example/lowpass/ProbeLowpass_artefacts/Release/VST3/Probe Lowpass.vst3" \
-            --out example-takes
+            --out example-takes --require-video
 
       - uses: actions/upload-artifact@v4
         with:
-          name: example-takes-windows-${{ github.sha }}
+          name: example-takes-windows-${{ steps.extract_version.outputs.version }}
           path: example-takes/
 
       - uses: actions/upload-artifact@v4
         with:
-          name: plugprobe-windows-${{ github.sha }}
+          name: plugprobe-windows-${{ steps.extract_version.outputs.version }}
           path: build/plugprobe_artefacts/Release/plugprobe.exe
 
       - name: Stage release asset

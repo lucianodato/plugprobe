@@ -8,8 +8,11 @@ offline, diff the results. No DAW.
 
 Single JUCE/C++ CLI, no new dependencies. Headless by
 default (byte-identical renders); UI/visible/screenshot paths are opt-in.
-OS driver + capture are macOS-only today; Windows/Linux backends are
-compiled stubs that fail loud (`NO_OS_DRIVER`).
+OS driver: macOS has the full set (AX tree, HID input, shots, video). Windows
+has tree (UI Automation), input, shots and video; Linux (X11) has input, shots
+and video. Video (AVI) and PNG shots are encoded in shared code, so every OS
+with a frame grab produces the same output. Anything a platform lacks fails
+loud with `NO_OS_DRIVER`. The Linux UI tree (AT-SPI) is still pending.
 
 Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
 
@@ -32,7 +35,7 @@ JSON (`--json '{"plugin":"…"}'`) or `-` for stdin.
 | `inspect` | `{plugin}` → automatable `params[]` + `editor:{width,height,hasUI}` |
 | `snapshot` | `{plugin, role?, limit?, offset?, shot?, visible?, holdMs?}` → AX node tree `[{id,role,name,enabled,value,bounds}]`. AX-empty custom-painted editors return containers only with `axEmpty:true` + fallback |
 | `act` | `{plugin, via:"os"\|"juce", action\|actions, shotAfter?, visible?, holdMs?}` → detached probe click/drag/type/set. Node-id press works headless via AX; `set {target,value}` drives sliders in native units grant-free (the param-less path, needs a GUI session exposing AX windows — probe via `snapshot`); raw `{x,y}` clicks, drag, type need `visible:true` + the macOS Accessibility grant for the current binary (ad-hoc rebuilds invalidate it) |
-| `render` | `{plugin, in, out, sr?, block?, params?, params_json?, midi?, midi_file?, bypass?, timeline?, shot?, visible?, holdMs?, video?}` → offline render. `params_json:preset.json` applies a `{"params":{...}}` preset file first (explicit `params` win). `midi:[{atMs,note,vel?,durMs?,ch?}]` / `midi_file:song.mid` (tempo-mapped) feeds instruments — silent `in` + notes is the synth smoke pattern. Every command runs crash-isolated: a dying plugin yields fail-loud `CRASH`, never a dead pipe. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click). `timeline:[{atMs,slider:{target,value}}]` sets AX sliders mid-take, grant-free (native units) — the replayable param-less path. `video:out.mp4` records the editor window headless (frame-grab, no grant, macOS-only) with the take muxed as audio; diagnostic-only (`video`/`videoSkipped`) — off-macOS the take still succeeds with `videoSkipped` |
+| `render` | `{plugin, in, out, sr?, block?, params?, params_json?, midi?, midi_file?, bypass?, timeline?, shot?, visible?, holdMs?, video?}` → offline render. `params_json:preset.json` applies a `{"params":{...}}` preset file first (explicit `params` win). `midi:[{atMs,note,vel?,durMs?,ch?}]` / `midi_file:song.mid` (tempo-mapped) feeds instruments — silent `in` + notes is the synth smoke pattern. Every command runs crash-isolated: a dying plugin yields fail-loud `CRASH`, never a dead pipe. `timeline:[{atMs,params?,shot?,click?}]` runs on one instance for learn-freeze (per-entry live-editor shot + native click). `timeline:[{atMs,slider:{target,value}}]` sets AX sliders mid-take, grant-free (native units) — the replayable param-less path. `video:out.avi` records the editor window at ~15 fps into an AVI (MJPEG video + the take as PCM audio); Linux and Windows place the editor onscreen for capture. Diagnostic-only (`video`/`videoSkipped`) — if the editor can't be grabbed the take still succeeds with `videoSkipped` |
 | `compare` | `{a, b, slices?}` → `{nullDb,lufsDiff,spectralDist,sdrDb,artifactDb,costDelta}` |
 | `session` | `start {plugin,loop,out,sr?,block?,params?,bypass?,visible?,dir?}` → `{session,outFile,startedAt,latencyMs}`; `act {session,params?|click?|slider?,at_ms?}` → `{atMs,paramDelta?,meters}` (`slider:{target,value}` for param-less controls, verified read-only, replayed once at stop); `stop {session,out?}` → `{outFile,durS,eventLog,hash}`. Agent-paced file-backed takes (single loop pass, events aligned by `samplePos`); clicks verified read-only at act, pressed once at stop replay (macOS). Realtime loop + monitor mirror are the documented ceiling |
 | `meters` | `{session,window_ms?}` → `{peakDb,rmsDb,lufsM,crestDb,spectrum[16]}` (lufsM is an RMS proxy, same convention as `compare`) |
@@ -58,15 +61,15 @@ for — no globs over temp dirs:
 ```yaml
 - run: |
     BIN=build/plugprobe_artefacts/Release/plugprobe
-    echo "{\"plugin\":\"Example Denoiser\",\"in\":\"in.wav\",\"out\":\"$GITHUB_WORKSPACE/renders/take.wav\",\"shot\":\"$GITHUB_WORKSPACE/renders/shot.png\",\"video\":\"$GITHUB_WORKSPACE/renders/take.mp4\"}" > /tmp/ren.json
+    echo "{\"plugin\":\"Example Denoiser\",\"in\":\"in.wav\",\"out\":\"$GITHUB_WORKSPACE/renders/take.wav\",\"shot\":\"$GITHUB_WORKSPACE/renders/shot.png\",\"video\":\"$GITHUB_WORKSPACE/renders/take.avi\"}" > /tmp/ren.json
     $BIN render --json /tmp/ren.json
 - uses: actions/upload-artifact@v4
   with: {name: takes, path: renders/}
 ```
 
-`video` is frame-grabbed headless (no grant) on macOS; without a working
-encoder the take still succeeds with `videoSkipped`. Headless
-Linux/Windows jobs omit `video` (`NO_OS_DRIVER`).
+`video` is frame-grabbed without an accessibility grant on all three OSes;
+without a working frame grab or encoder the take still succeeds with
+`videoSkipped`.
 
 ## Examples
 
@@ -122,7 +125,7 @@ writes a per-file compare CSV against a reference plugin.
 
 `scripts/example_session.py` is the CI end-to-end proof: white noise through
 the bundled example lowpass, cutoff swept 20kHz→1kHz via session acts, take
-+ video (`sweep.mp4`) uploaded as artifacts.
++ video (`sweep.avi`) uploaded as artifacts.
 
 ## Layout
 
@@ -141,7 +144,8 @@ src/cmd_compare.cpp     null/LUFS/spectral/SDR/cost diff
 src/cmd_session.cpp     session start|act|stop + meters
 src/plugprobe_os.h      OS-layer interface (front/capture/tree/input)
 src/plugprobe_os_mac.mm macOS AX/CGEvent driver + NSView capture
-src/plugprobe_os_win.cpp / plugprobe_os_linux.cpp  stub backends (fail loud)
+src/plugprobe_os_win.cpp  Windows UIA/SendInput/PrintWindow backend
+src/plugprobe_os_linux.cpp  Linux X11 XTest/XGetImage backend
 tests/test_plugprobe.py  contract tests (needs PLUGPROBE_BIN)
 scripts/matrix.py      batch render+compare matrix
 scripts/example_session.py  CI end-to-end (noise -> example sweep -> take+video)

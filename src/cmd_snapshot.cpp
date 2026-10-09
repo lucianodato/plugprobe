@@ -22,6 +22,11 @@ int runSnapshot(const juce::var& args)
       emitErr(errObj("NOT_FOUND", "plugin not found: " + pq));
       return 1;
     }
+    if (!plugprobeOsCaps().tree) {
+      emitErr(errObj("NO_OS_DRIVER", "snapshot needs the OS UI-tree driver, "
+                                     "unavailable on this OS"));
+      return 1;
+    }
     bool vis = (bool)args["visible"];
     juce::String sp = jstr(args, "shot");
     auto* o = new juce::DynamicObject();
@@ -64,7 +69,6 @@ int runSnapshot(const juce::var& args)
       return 0;
     }
     juce::Array<juce::var> nodes;
-#if JUCE_MAC
     for (auto& nn : plugprobeAxDump(ed->getWindowHandle())) {
       auto* m = new juce::DynamicObject();
       m->setProperty("id", juce::String(nn.id));
@@ -80,7 +84,6 @@ int runSnapshot(const juce::var& args)
       m->setProperty("bounds", juce::var(b));
       nodes.add(juce::var(m));
     }
-#endif
     int total = nodes.size();
     // AX-empty boundary (Issue F): custom-painted editors (RX) expose only
     // containers (window/groups), zero controls — node-id clicks have nothing
@@ -119,17 +122,17 @@ int runSnapshot(const juce::var& args)
     o->setProperty("offset", offset);
     setBundleProps(o, sd);
     if (sp.isNotEmpty()) {
-#if JUCE_MAC
-      juce::String saved, why2;
-      if (noteCapture(plugprobeSaveNSViewShot(ed->getWindowHandle(),
-                                          sp.toRawUTF8(), nullptr, nullptr),
-                      sp, saved, why2))
-        o->setProperty("screenshot", saved);
-      else
-        o->setProperty("shotSkipped", why2);
-#else
-      o->setProperty("shotSkipped", "no-editor-or-headless");
-#endif
+      if (!plugprobeOsCaps().editor) {
+        o->setProperty("shotSkipped", "NO_OS_DRIVER");
+      } else {
+        juce::String saved, why2;
+        if (noteCapture(plugprobeSaveNSViewShot(ed->getWindowHandle(),
+                                            sp.toRawUTF8(), nullptr, nullptr),
+                        sp, saved, why2))
+          o->setProperty("screenshot", saved);
+        else
+          o->setProperty("shotSkipped", why2);
+      }
     }
     if (vis) {
       holdUi((int)jnum(args, "holdMs", 2000));

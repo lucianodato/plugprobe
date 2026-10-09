@@ -39,7 +39,7 @@ add_subdirectory(example/lowpass)
 target_sources(plugprobe PRIVATE src/main.cpp src/core.cpp src/gui.cpp
     src/cmd_scan.cpp src/cmd_inspect.cpp src/cmd_snapshot.cpp src/cmd_act.cpp
     src/cmd_render.cpp src/cmd_compare.cpp src/cmd_session.cpp src/session.cpp
-    src/cmd_manual.cpp)
+    src/cmd_manual.cpp src/capture.cpp)
 if(APPLE)
     target_sources(plugprobe PRIVATE src/plugprobe_os_mac.mm)
 elseif(WIN32)
@@ -59,8 +59,18 @@ if(APPLE)
     # console apps don't get JUCE's GUI-app framework links; AU hosting needs them
     target_link_libraries(plugprobe PRIVATE
         "-framework AudioUnit" "-framework AudioToolbox" "-framework CoreAudio"
-        "-framework CoreAudioKit" "-framework Cocoa" "-framework ApplicationServices"
-        "-framework AVFoundation" "-framework CoreMedia")
+        "-framework CoreAudioKit" "-framework Cocoa" "-framework ApplicationServices")
+endif()
+if(WIN32)
+    target_link_libraries(plugprobe PRIVATE UIAutomationCore)
+endif()
+if(UNIX AND NOT APPLE)
+    target_compile_definitions(plugprobe PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+    find_package(X11 REQUIRED)
+    find_library(XTEST_LIB Xtst REQUIRED)
+    target_include_directories(plugprobe PRIVATE ${X11_INCLUDE_DIR})
+    target_compile_definitions(plugprobe PRIVATE JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(plugprobe PRIVATE ${X11_X11_LIB} ${XTEST_LIB})
 endif()
 target_link_libraries(plugprobe PRIVATE
     juce::juce_audio_processors

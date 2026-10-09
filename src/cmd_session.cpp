@@ -198,10 +198,12 @@ int runSessionAct(const juce::var& args) {
       emitErr(errObj("ARGS", "session act: bypass session has no editor"));
       return 1;
     }
-#if !JUCE_MAC
-    emitErr(errObj("NO_OS_DRIVER", "session act clicks are macOS-only"));
-    return 1;
-#else
+    const auto caps = plugprobeOsCaps();
+    if (!caps.editor || !caps.tree || !caps.input) {
+      emitErr(errObj("NO_OS_DRIVER", "session act clicks need the OS UI "
+                                     "driver, unavailable on this OS"));
+      return 1;
+    }
     juce::PluginDescription d;
     if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
         !guiCapable(d)) {
@@ -256,7 +258,6 @@ int runSessionAct(const juce::var& args) {
       ev->setProperty("fragile", true);
     }
     ev->setProperty("replayAtStop", true);
-#endif
   }
   if (args.hasProperty("slider") && !hasSlider) {
     emitErr(errObj("ARGS", "session act: slider needs {target,value} "
@@ -279,10 +280,12 @@ int runSessionAct(const juce::var& args) {
       emitErr(errObj("ARGS", "session act: bypass session has no editor"));
       return 1;
     }
-#if !JUCE_MAC
-    emitErr(errObj("NO_OS_DRIVER", "session act sliders are macOS-only"));
-    return 1;
-#else
+    const auto caps = plugprobeOsCaps();
+    if (!caps.editor || !caps.tree) {
+      emitErr(errObj("NO_OS_DRIVER", "session act sliders need the OS UI "
+                                     "driver, unavailable on this OS"));
+      return 1;
+    }
     juce::PluginDescription d;
     if (!findPlugin(s["plugin"].toString(), argPaths(s), d) ||
         !guiCapable(d)) {
@@ -316,7 +319,6 @@ int runSessionAct(const juce::var& args) {
     se->setProperty("value", (double)sv);
     ev->setProperty("slider", juce::var(se));
     ev->setProperty("replayAtStop", true);
-#endif
   }
   auto* so = s.getDynamicObject();
   juce::Array<juce::var> events(*s["events"].getArray());
@@ -483,10 +485,18 @@ int runSessionStop(const juce::var& args) {
   }
   all += cp.readAllProcessOutput();
   juce::String last;
-  for (auto& ln : juce::StringArray::fromLines(all))
-    if (ln.trim().isNotEmpty()) last = ln.trim();
   juce::var cr;
-  if (!juce::JSON::parse(last, cr) || !cr.isObject() || !(bool)cr["ok"]) {
+  // Child stderr shares this pipe; use the last JSON envelope, not log noise.
+  for (auto& ln : juce::StringArray::fromLines(all)) {
+    auto line = ln.trim();
+    if (line.isEmpty()) continue;
+    last = line;
+    juce::var candidate;
+    if (juce::JSON::parse(line, candidate) && candidate.isObject() &&
+        candidate.hasProperty("ok"))
+      cr = candidate;
+  }
+  if (!cr.isObject() || !(bool)cr["ok"]) {
     juce::String msg =
         cr.isObject() && cr.hasProperty("error")
             ? cr["error"]["message"].toString()
