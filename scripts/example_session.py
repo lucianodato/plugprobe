@@ -126,6 +126,16 @@ def main():
         blob = open(vid, "rb").read()
         assert len(blob) > 50000, f"video too small ({len(blob)})"
         assert b"vids" in blob and b"auds" in blob, "video lacks A/V tracks"
+        avih = blob.find(b"avih")
+        assert avih >= 0 and avih + 28 <= len(blob), "video lacks AVI header"
+        frame_us = struct.unpack_from("<I", blob, avih + 8)[0]
+        frames = struct.unpack_from("<I", blob, avih + 24)[0]
+        with wave.open(take, "rb") as audio:
+            audio_secs = audio.getnframes() / audio.getframerate()
+        video_secs = frame_us * frames / 1_000_000
+        assert abs(video_secs - audio_secs) <= frame_us / 1_000_000, (
+            f"A/V duration mismatch ({video_secs:.2f}s video, "
+            f"{audio_secs:.2f}s audio)")
     print(f"EXAMPLE_OK spectralDist={sd:.2f} take={take}"
           + (f" video={vid}" if a.require_video else ""))
 

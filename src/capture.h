@@ -17,13 +17,14 @@ int saveShotPng(void* hv, const char* path, int* w, int* h);
 
 struct VideoRec {
   void* hv = nullptr;
-  double lastMs = -1e9;
+  juce::int64 lastFrame = -1;
   int w = 0, h = 0;                            // locked to the first frame
+  std::vector<juce::int64> samplePositions;
   std::vector<std::vector<unsigned char>> jpegs;  // one JPEG per grabbed frame
 };
 std::unique_ptr<VideoRec> videoStart(void* hv);
-// Self-throttled to ~15 fps: call it from the paced render loop.
-void videoGrab(VideoRec& r);
+// Capture by audio position so host/capture overhead cannot lengthen the AVI.
+void videoGrab(VideoRec& r, juce::int64 samplePos, double sampleRate);
 // Writes an AVI (MJPEG video + the take as PCM audio) to `out`.
 bool videoFinish(VideoRec& r, const juce::File& take, const juce::File& out,
                  juce::String& err);

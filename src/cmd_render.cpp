@@ -574,7 +574,7 @@ int runRender(const juce::var& args)
         if (visEd != nullptr) paceToRealtime(paceT0, pos + (size_t)m, sr);
         if (vidRec != nullptr) {
           pumpMessages();  // fresh paint before the grab
-          pp::videoGrab(*vidRec);
+          pp::videoGrab(*vidRec, (juce::int64)(pos + (size_t)m), sr);
         }
       }
       int tailN = (int)(jnum(args, "tail_ms", 500.0) / 1000.0 * sr);
@@ -597,7 +597,8 @@ int runRender(const juce::var& args)
             paceToRealtime(paceT0, n + (size_t)(pos + m), sr);
           if (vidRec != nullptr) {
             pumpMessages();
-            pp::videoGrab(*vidRec);
+            pp::videoGrab(*vidRec, (juce::int64)(base + (size_t)(pos + m)),
+                          sr);
           }
         }
       }

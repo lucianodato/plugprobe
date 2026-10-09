@@ -94,10 +94,11 @@ std::unique_ptr<VideoRec> videoStart(void* hv) {
   return r;
 }
 
-void videoGrab(VideoRec& r) {
-  double now = juce::Time::getMillisecondCounterHiRes();
-  if (now - r.lastMs < 1000.0 / kVideoFps) return;
-  r.lastMs = now;
+void videoGrab(VideoRec& r, juce::int64 samplePos, double sampleRate) {
+  if (sampleRate <= 0) return;
+  auto frame = (juce::int64)(samplePos * kVideoFps / sampleRate);
+  if (frame <= r.lastFrame) return;
+  r.lastFrame = frame;
   PlugprobeRgbFrame f;
   if (!plugprobeGrabFrame(r.hv, f)) return;
   if (r.jpegs.empty()) {
@@ -111,6 +112,7 @@ void videoGrab(VideoRec& r) {
   jpg.setQuality(kJpegQuality);
   jpg.writeImageToStream(toImage(f), mos);
   const auto* p = static_cast<const unsigned char*>(mos.getData());
+  r.samplePositions.push_back(samplePos);
   r.jpegs.emplace_back(p, p + mos.getDataSize());
 }
 
@@ -143,13 +145,23 @@ bool videoFinish(VideoRec& r, const juce::File& take, const juce::File& out,
           -32768, 32767, (int)std::lrint(s[i] * 32767.0f));
   }
 
-  // Frame i covers audio [floor(i*sr/fps), floor((i+1)*sr/fps)). Pad with the
-  // last grabbed frame so the video runs as long as the take.
-  const size_t grabbed = r.jpegs.size();
+  // Frame i covers audio [floor(i*sr/fps), floor((i+1)*sr/fps)).
   const size_t needed = (size_t)std::ceil(total / (double)sr * kVideoFps);
-  const size_t nFrames = std::max(grabbed, needed);
+  const size_t nFrames = std::max<size_t>(1, needed);
   auto audioStart = [&](size_t i) {
     return std::min<juce::int64>(total, (juce::int64)(i * sr / kVideoFps));
+  };
+  auto frameAt = [&](juce::int64 sample) {
+    auto next = std::lower_bound(r.samplePositions.begin(),
+                                 r.samplePositions.end(), sample);
+    if (next == r.samplePositions.begin()) return size_t{0};
+    if (next == r.samplePositions.end()) return r.jpegs.size() - 1;
+    auto after = (size_t)(next - r.samplePositions.begin());
+    auto before = after - 1;
+    return sample - r.samplePositions[before] <=
+                   r.samplePositions[after] - sample
+               ? before
+               : after;
   };
 
   Out o;
@@ -246,7 +258,7 @@ bool videoFinish(VideoRec& r, const juce::File& take, const juce::File& out,
   };
   std::vector<Idx> idx;
   for (size_t i = 0; i < nFrames; ++i) {
-    const auto& jpg = r.jpegs[std::min(i, grabbed - 1)];
+    const auto& jpg = r.jpegs[frameAt(audioStart(i))];
     size_t hdr = o.b.size();
     idx.push_back({{'0', '0', 'd', 'c'}, 0x10, (unsigned)(hdr - (movi + 4)),
                    (unsigned)jpg.size()});
