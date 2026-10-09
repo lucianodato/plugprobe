@@ -14,6 +14,7 @@
 #include <X11/extensions/XTest.h>
 
 #include <cstdint>
+#include <mutex>
 
 namespace {
 Display* xdisplay() {
@@ -22,6 +23,50 @@ Display* xdisplay() {
 }
 
 Window windowOf(void* hv) { return (Window)(uintptr_t)hv; }
+
+std::mutex xErrorTrapMutex;
+class ScopedXErrorTrap {
+ public:
+  explicit ScopedXErrorTrap(Display* d) : display(d) {
+    XSync(display, False);
+    std::lock_guard<std::mutex> lock(xErrorTrapMutex);
+    previous = XSetErrorHandler(handle);
+    active = this;
+  }
+  ~ScopedXErrorTrap() {
+    XSync(display, False);
+    std::lock_guard<std::mutex> lock(xErrorTrapMutex);
+    if (active == this) {
+      XSetErrorHandler(previous);
+      active = nullptr;
+    }
+  }
+  bool failed() {
+    XSync(display, False);
+    std::lock_guard<std::mutex> lock(xErrorTrapMutex);
+    return errorCode != 0;
+  }
+
+ private:
+  static int handle(Display* d, XErrorEvent* error) {
+    XErrorHandler prior = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(xErrorTrapMutex);
+      if (active != nullptr && active->display == d) {
+        active->errorCode = error->error_code;
+        return 0;
+      }
+      if (active != nullptr) prior = active->previous;
+    }
+    return prior != nullptr ? prior(d, error) : 0;
+  }
+
+  static ScopedXErrorTrap* active;
+  Display* display;
+  XErrorHandler previous = nullptr;
+  int errorCode = 0;
+};
+ScopedXErrorTrap* ScopedXErrorTrap::active = nullptr;
 
 void pumpMs(int ms) { juce::MessageManager::getInstance()->runDispatchLoopUntil(ms); }
 
@@ -58,14 +103,18 @@ bool plugprobeInputGranted() { return true; }
 bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
   Display* d = xdisplay();
   if (!d) return false;
+  ScopedXErrorTrap errors(d);
   XWindowAttributes a;
   if (!XGetWindowAttributes(d, windowOf(hv), &a) || a.width <= 0 ||
-      a.height <= 0)
+      a.height <= 0 || errors.failed())
     return false;
   if (a.map_state != IsViewable) return false;  // unmapped windows have no pixels
   XImage* xi = XGetImage(d, windowOf(hv), 0, 0, a.width, a.height, AllPlanes,
                          ZPixmap);
-  if (!xi) return false;
+  if (!xi || errors.failed()) {
+    if (xi != nullptr) XDestroyImage(xi);
+    return false;
+  }
   if (xi->bits_per_pixel != 32 || xi->red_mask != 0xff0000 ||
       xi->green_mask != 0xff00 || xi->blue_mask != 0xff) {
     XDestroyImage(xi);
@@ -96,11 +145,13 @@ int plugprobeSaveWindowShot(void* nsView, const char* path, int* w, int* h) {
 bool plugprobeShowFront(void* hv) {
   Display* d = xdisplay();
   if (!d) return false;
+  ScopedXErrorTrap errors(d);
   XMapRaised(d, windowOf(hv));
   XFlush(d);
   pumpMs(300);
   XWindowAttributes a;
-  return XGetWindowAttributes(d, windowOf(hv), &a) && a.map_state == IsViewable;
+  return XGetWindowAttributes(d, windowOf(hv), &a) &&
+         a.map_state == IsViewable && !errors.failed();
 }
 
 std::vector<PlugprobeAxNode> plugprobeAxDump(void*) { return {}; }  // no AT-SPI yet
