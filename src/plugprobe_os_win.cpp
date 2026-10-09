@@ -184,7 +184,12 @@ bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
   int W = r.right - r.left, H = r.bottom - r.top;
   if (W <= 0 || H <= 0) return false;
   HDC screen = GetDC(nullptr);
+  if (!screen) return false;
   HDC mem = CreateCompatibleDC(screen);
+  if (!mem) {
+    ReleaseDC(nullptr, screen);
+    return false;
+  }
   BITMAPINFO bmi{};
   bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
   bmi.bmiHeader.biWidth = W;
@@ -194,11 +199,10 @@ bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
   bmi.bmiHeader.biCompression = BI_RGB;
   void* bits = nullptr;
   HBITMAP dib = CreateDIBSection(screen, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
-  ReleaseDC(nullptr, screen);
   bool ok = false;
   if (dib) {
     HGDIOBJ old = SelectObject(mem, dib);
-    ok = PrintWindow(hwnd, mem, PW_RENDERFULLCONTENT) != FALSE;
+    ok = BitBlt(mem, 0, 0, W, H, screen, r.left, r.top, SRCCOPY) != FALSE;
     SelectObject(mem, old);
     if (ok) {
       auto* px = static_cast<unsigned char*>(bits);  // BGRX
@@ -214,6 +218,7 @@ bool plugprobeGrabFrame(void* hv, PlugprobeRgbFrame& out) {
     DeleteObject(dib);
   }
   DeleteDC(mem);
+  ReleaseDC(nullptr, screen);
   return ok;
 }
 

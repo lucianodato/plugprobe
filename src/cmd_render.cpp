@@ -381,13 +381,13 @@ int runRender(const juce::var& args)
                   [](const Ev& a, const Ev& b) { return a.frame < b.frame; });
       }
       // Editor for mid-render shots/clicks/sliders/video: hidden unless
-      // visible, except Linux video capture which needs onscreen X11 pixels.
+      // visible, except Linux/Windows video capture which needs screen pixels.
       // Only opened when a capture or click was requested.
       if (guiOwned != nullptr && visEd == nullptr &&
           (wantVis || wantShot || hasEntryShot || hasEntryClick ||
            hasEntrySlider || videoP.isNotEmpty())) {
         juce::String why;
-#if JUCE_LINUX
+#if JUCE_LINUX || JUCE_WINDOWS
         const bool editorOnscreen = wantVis || videoP.isNotEmpty();
 #else
         const bool editorOnscreen = wantVis;
