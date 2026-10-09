@@ -485,10 +485,18 @@ int runSessionStop(const juce::var& args) {
   }
   all += cp.readAllProcessOutput();
   juce::String last;
-  for (auto& ln : juce::StringArray::fromLines(all))
-    if (ln.trim().isNotEmpty()) last = ln.trim();
   juce::var cr;
-  if (!juce::JSON::parse(last, cr) || !cr.isObject() || !(bool)cr["ok"]) {
+  // Child stderr shares this pipe; use the last JSON envelope, not log noise.
+  for (auto& ln : juce::StringArray::fromLines(all)) {
+    auto line = ln.trim();
+    if (line.isEmpty()) continue;
+    last = line;
+    juce::var candidate;
+    if (juce::JSON::parse(line, candidate) && candidate.isObject() &&
+        candidate.hasProperty("ok"))
+      cr = candidate;
+  }
+  if (!cr.isObject() || !(bool)cr["ok"]) {
     juce::String msg =
         cr.isObject() && cr.hasProperty("error")
             ? cr["error"]["message"].toString()
