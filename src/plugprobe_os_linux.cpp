@@ -17,8 +17,15 @@
 #include <mutex>
 
 namespace {
+// The CLI isn't a JUCEApplication, so install a nonfatal X error handler.
+int ignoreXError(Display*, XErrorEvent*) { return 0; }
+
 Display* xdisplay() {
-  static Display* d = XOpenDisplay(nullptr);  // one connection for the process
+  static Display* d = [] {
+    Display* display = XOpenDisplay(nullptr);
+    if (display != nullptr) XSetErrorHandler(ignoreXError);
+    return display;
+  }();
   return d;
 }
 
