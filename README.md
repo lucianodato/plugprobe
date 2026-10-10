@@ -16,6 +16,12 @@ loud with `NO_OS_DRIVER`. The Linux UI tree (AT-SPI) is still pending.
 
 Agents: read [SKILL.md](SKILL.md) — command patterns, RTFM workflow, error codes.
 
+OpenCode v2 users can install the
+[opencode-plugprobe plugin](https://github.com/lucianodato/opencode-plugprobe)
+with `opencode plugin add github:lucianodato/opencode-plugprobe`. It exposes
+these operations as agent tools but still requires the `plugprobe` CLI installed
+below.
+
 ## Install
 
 Prebuilt (no compiler): `curl -fsSL https://raw.githubusercontent.com/lucianodato/plugprobe/main/install.sh | sh`

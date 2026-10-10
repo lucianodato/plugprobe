@@ -17,6 +17,14 @@ Agent-driven audio plugin host. CLI-only: every command is
 - Repeat loops go faster with `PLUGPROBE_SCAN_CACHE=/tmp/scan.xml`
   (memoizes plugin discovery across commands, mtime-validated).
 
+## OpenCode v2
+
+When available, prefer the namespaced `plugprobe_*` tools from the
+[OpenCode plugin](https://github.com/lucianodato/opencode-plugprobe):
+`opencode plugin add github:lucianodato/opencode-plugprobe`. The plugin wraps
+this CLI and still requires its binary to be installed; the commands below are
+the shell/CI fallback.
+
 ## Workflow (in order)
 
 1. **RTFM**: `manual --json {plugin}` (or `{path}` to a vendor PDF/dir) →
