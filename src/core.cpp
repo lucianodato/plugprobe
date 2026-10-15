@@ -217,16 +217,30 @@ bool findPlugin(const juce::String& q, const std::vector<juce::String>& dirs,
   }
   juce::String qb = qf.getFileName();
   juce::String qbNoExt = qf.getFileNameWithoutExtension();
+  // Two-pass match: exact ids/names win over the greedy fallbacks. A single
+  // loop lets a same-named entry of another format (e.g. a system-installed
+  // LV2 next to a scanned VST3) satisfy a basename fallback before the
+  // requested entry's exact fileOrIdentifier is ever compared.
+  auto matchesExactly = [&qq](const juce::PluginDescription& t) {
+    return t.fileOrIdentifier == qq || t.name == qq ||
+           t.descriptiveName == qq || juce::String(t.uniqueId) == qq;
+  };
+  auto matchesLoosely = [&qq, &qb, &qbNoExt](const juce::PluginDescription& t) {
+    if (t.fileOrIdentifier.contains(qq) || qq.contains(t.fileOrIdentifier))
+      return true;
+    juce::String tb = juce::File(t.fileOrIdentifier).getFileName();
+    return qb.isNotEmpty() &&
+           (tb == qb || tb == qbNoExt || t.name == qbNoExt ||
+            t.descriptiveName == qbNoExt);
+  };
   for (auto& t : list.getTypes()) {
-    if (t.fileOrIdentifier == qq || t.name == qq || t.descriptiveName == qq ||
-        juce::String(t.uniqueId) == qq || t.fileOrIdentifier.contains(qq) ||
-        qq.contains(t.fileOrIdentifier)) {
+    if (matchesExactly(t)) {
       desc = t;
       return true;
     }
-    juce::String tb = juce::File(t.fileOrIdentifier).getFileName();
-    if (qb.isNotEmpty() && (tb == qb || tb == qbNoExt || t.name == qbNoExt ||
-                            t.descriptiveName == qbNoExt)) {
+  }
+  for (auto& t : list.getTypes()) {
+    if (matchesLoosely(t)) {
       desc = t;
       return true;
     }
